@@ -28,11 +28,11 @@
           <button class="primary" type="submit">Sign in</button>
         </form>
         <form id="registerForm" class="form hidden">
-          <label>Name<input id="registerName" required placeholder="Institution / Officer name"></label>
-          <label>Email<input id="registerEmail" type="email" required placeholder="name@example.com"></label>
+          <label>Name<input id="registerName" required placeholder="Institution name"></label>
+          <label>Email<input id="registerEmail" type="email" required placeholder="institution@example.com"></label>
           <label>Password<input id="registerPassword" type="password" minlength="8" required placeholder="Minimum 8 characters"></label>
-          <label>Role<select id="registerRole"><option value="INSTITUTION">Institution</option><option value="OFFICER">Officer</option><option value="ADMIN">Admin</option></select></label>
-          <button class="primary" type="submit">Create account</button>
+          <p class="message">New registrations are created as Institution accounts. Officer/Admin accounts are provisioned separately.</p>
+          <button class="primary" type="submit">Create institution account</button>
         </form>
         <p id="authMessage" class="message"></p>
       </div>
