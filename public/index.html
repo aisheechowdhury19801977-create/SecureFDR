@@ -11,29 +11,12 @@
     <div class="brand"><span class="brand-mark">S</span><div><strong>SecureFDR</strong><small>AICTE Security Deposit & FDR Portal</small></div></div>
     <div id="userBadge" class="user-badge">Not signed in</div>
   </header>
-
   <main class="container">
     <section id="authView" class="auth-grid">
-      <div class="hero-card">
-        <p class="eyebrow">SIH26265 • Smart Automation</p>
-        <h1>Secure the complete FDR lifecycle.</h1>
-        <p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p>
-        <div class="feature-row"><span>🔐 Secure login</span><span>📄 PDF verification</span><span>🧠 Smart validation</span><span>📊 Review dashboard</span></div>
-      </div>
-      <div class="card auth-card">
-        <div class="tabs"><button class="tab active" data-tab="login">Login</button><button class="tab" data-tab="register">Register</button></div>
-        <form id="loginForm" class="form">
-          <label>Email<input id="loginEmail" type="email" required placeholder="institution@example.com"></label>
-          <label>Password<input id="loginPassword" type="password" required placeholder="••••••••"></label>
-          <button class="primary" type="submit">Sign in</button>
-        </form>
-        <form id="registerForm" class="form hidden">
-          <label>Name<input id="registerName" required placeholder="Institution name"></label>
-          <label>Email<input id="registerEmail" type="email" required placeholder="institution@example.com"></label>
-          <label>Password<input id="registerPassword" type="password" minlength="8" required placeholder="Minimum 8 characters"></label>
-          <p class="message">New registrations are created as Institution accounts. Officer/Admin accounts are provisioned separately.</p>
-          <button class="primary" type="submit">Create institution account</button>
-        </form>
+      <div class="hero-card"><p class="eyebrow">SIH26265 • Smart Automation</p><h1>Secure the complete FDR lifecycle.</h1><p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p><div class="feature-row"><span>🔐 Secure login</span><span>📄 PDF verification</span><span>🧠 Smart validation</span><span>📊 Review dashboard</span></div></div>
+      <div class="card auth-card"><div class="tabs"><button class="tab active" data-tab="login">Login</button><button class="tab" data-tab="register">Register</button></div>
+        <form id="loginForm" class="form"><label>Email<input id="loginEmail" type="email" required placeholder="institution@example.com"></label><label>Password<input id="loginPassword" type="password" required placeholder="••••••••"></label><button class="primary" type="submit">Sign in</button></form>
+        <form id="registerForm" class="form hidden"><label>Name<input id="registerName" required placeholder="Institution name"></label><label>Email<input id="registerEmail" type="email" required placeholder="institution@example.com"></label><label>Password<input id="registerPassword" type="password" minlength="8" required placeholder="Minimum 8 characters"></label><p class="message">New registrations are created as Institution accounts. Officer/Admin accounts are provisioned separately.</p><button class="primary" type="submit">Create institution account</button></form>
         <p id="authMessage" class="message"></p>
       </div>
     </section>
@@ -41,38 +24,18 @@
     <section id="appView" class="hidden">
       <div class="page-head"><div><p class="eyebrow">SecureFDR workspace</p><h2 id="welcome">Dashboard</h2></div><button id="logoutBtn" class="ghost">Log out</button></div>
       <div id="stats" class="stats"></div>
+      <div class="card panel"><div class="panel-head"><div><h3>Lifecycle alerts</h3><p>FDRs that have expired or will expire within the next 30 days.</p></div><button id="refreshDashboardBtn" class="ghost">Refresh</button></div><div id="alertList" class="alert-list"></div></div>
 
       <div id="institutionPanel" class="card panel">
         <div class="panel-head"><div><h3>Submit a security deposit / FDR</h3><p>Upload the original FDR PDF first. SecureFDR extracts key fields and runs automated consistency checks.</p></div></div>
-        <div class="form form-grid">
-          <label>FDR PDF<input id="documentFile" type="file" accept="application/pdf"></label>
-          <div class="form-actions"><button id="verifyBtn" class="primary" type="button">Verify document</button><span id="verifyMessage" class="message"></span></div>
-        </div>
-        <div id="verificationPanel" class="card hidden" style="margin-top:18px;padding:18px;background:#f8fbff">
-          <strong>Automated verification result</strong>
-          <p id="verificationSummary" class="message"></p>
-        </div>
-        <form id="fdrForm" class="form form-grid" style="margin-top:18px">
-          <label>FDR number<input id="fdrNumber" required placeholder="FDR-2026-0001"></label>
-          <label>Bank name<input id="bankName" required placeholder="Bank / financial institution"></label>
-          <label>Amount (₹)<input id="amount" type="number" min="1" step="0.01" required placeholder="100000"></label>
-          <label>Issue date<input id="issueDate" type="date" required></label>
-          <label>Expiry date<input id="expiryDate" type="date" required></label>
-          <label>Document name<input id="documentName" readonly placeholder="Uploaded PDF filename"></label>
-          <div class="form-actions"><button class="primary" type="submit">Submit FDR for review</button><span id="fdrMessage" class="message"></span></div>
-        </form>
+        <div class="form form-grid"><label>FDR PDF<input id="documentFile" type="file" accept="application/pdf"></label><div class="form-actions"><button id="verifyBtn" class="primary" type="button">Verify document</button><span id="verifyMessage" class="message"></span></div></div>
+        <div id="verificationPanel" class="card hidden" style="margin-top:18px;padding:18px;background:#f8fbff"><strong>Automated verification result</strong><p id="verificationSummary" class="message"></p></div>
+        <form id="fdrForm" class="form form-grid" style="margin-top:18px"><label>FDR number<input id="fdrNumber" required placeholder="FDR-2026-0001"></label><label>Bank name<input id="bankName" required placeholder="Bank / financial institution"></label><label>Amount (₹)<input id="amount" type="number" min="1" step="0.01" required placeholder="100000"></label><label>Issue date<input id="issueDate" type="date" required></label><label>Expiry date<input id="expiryDate" type="date" required></label><label>Document name<input id="documentName" readonly placeholder="Uploaded PDF filename"></label><div class="form-actions"><button class="primary" type="submit">Submit FDR for review</button><span id="fdrMessage" class="message"></span></div></form>
       </div>
 
-      <div id="reviewPanel" class="card panel hidden">
-        <div class="panel-head"><div><h3>Officer verification queue</h3><p>Review automated checks before approving an FDR.</p></div><button id="refreshQueueBtn" class="ghost">Refresh queue</button></div>
-        <div id="queueEmpty" class="message">No pending FDRs.</div>
-        <div class="table-wrap"><table><thead><tr><th>Institution</th><th>FDR</th><th>Amount</th><th>AI check</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="queueRows"></tbody></table></div>
-      </div>
+      <div id="reviewPanel" class="card panel hidden"><div class="panel-head"><div><h3>Officer verification queue</h3><p>Review automated checks before approving an FDR.</p></div><button id="refreshQueueBtn" class="ghost">Refresh queue</button></div><div id="queueEmpty" class="message">No pending FDRs.</div><div class="table-wrap"><table><thead><tr><th>Institution</th><th>FDR</th><th>Amount</th><th>AI check</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="queueRows"></tbody></table></div></div>
 
-      <div class="card panel">
-        <div class="panel-head"><div><h3>FDR records</h3><p>Status updates, verification score and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div>
-        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Verification</th><th>Status</th></tr></thead><tbody id="fdrRows"></tbody></table></div>
-      </div>
+      <div class="card panel"><div class="panel-head"><div><h3>FDR records</h3><p>Status updates, verification score and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Verification</th><th>Status</th></tr></thead><tbody id="fdrRows"></tbody></table></div></div>
     </section>
   </main>
   <script src="/app.js"></script>
