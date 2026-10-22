@@ -9,6 +9,17 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS document_verifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  original_filename TEXT NOT NULL,
+  stored_path TEXT NOT NULL,
+  extracted_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  confidence NUMERIC(5,2) NOT NULL DEFAULT 0,
+  passed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS fdr_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   institution_id UUID NOT NULL REFERENCES users(id),
@@ -20,6 +31,8 @@ CREATE TABLE IF NOT EXISTS fdr_records (
   status TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED','UNDER_REVIEW','VERIFIED','REJECTED','EXPIRING','EXPIRED')),
   document_name TEXT,
   document_url TEXT,
+  verification_status TEXT NOT NULL DEFAULT 'NEEDS_REVIEW' CHECK (verification_status IN ('AUTO_PASSED','NEEDS_REVIEW')),
+  verification_score NUMERIC(5,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -36,3 +49,4 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS fdr_institution_idx ON fdr_records(institution_id);
 CREATE INDEX IF NOT EXISTS fdr_expiry_idx ON fdr_records(expiry_date);
 CREATE INDEX IF NOT EXISTS audit_user_idx ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS document_verification_user_idx ON document_verifications(user_id);
