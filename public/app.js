@@ -1,4 +1,10 @@
-const state = { token: localStorage.getItem('securefdr_token'), user: null };
+const state = {
+  token: localStorage.getItem('securefdr_token'),
+  user: null,
+  selectedFdr: null,
+  decision: null
+};
+
 const $ = (id) => document.getElementById(id);
 
 function setMessage(id, text, ok = false) {
@@ -68,6 +74,17 @@ function countsFor(fdrs) {
   }, { total: 0, verified: 0, review: 0, expired: 0 });
 }
 
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('en-IN');
+}
+
 async function loadFdrs() {
   const data = await api('/api/fdr');
   const rows = $('fdrRows');
@@ -79,7 +96,7 @@ async function loadFdrs() {
     tr.innerHTML = `<td><strong>${escapeHtml(fdr.fdr_number)}</strong></td>
       <td>${escapeHtml(fdr.bank_name)}</td>
       <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
-      <td>${escapeHtml(fdr.expiry_date)}</td>
+      <td>${formatDate(fdr.expiry_date)}</td>
       <td>${statusPill(fdr.status)}</td>
       <td>${state.user.role === 'INSTITUTION' ? '—' : 'Verification queue'}</td>`;
     rows.appendChild(tr);
@@ -97,12 +114,13 @@ async function loadOfficerQueue() {
     rows.innerHTML = '';
 
     for (const fdr of data.fdrs) {
-      const actions = fdr.status === 'VERIFIED' || fdr.status === 'REJECTED'
+      const final = ['VERIFIED', 'REJECTED'].includes(fdr.status);
+      const actions = final
         ? '<span class="message">Final</span>'
         : `<div class="decision-actions">
-            <button class="action-btn" data-id="${fdr.id}" data-status="UNDER_REVIEW">Review</button>
-            <button class="action-btn success" data-id="${fdr.id}" data-status="VERIFIED">Verify</button>
-            <button class="action-btn danger" data-id="${fdr.id}" data-status="REJECTED">Reject</button>
+            <button class="action-btn" data-action="review" data-id="${fdr.id}">Review</button>
+            <button class="action-btn success" data-action="verify" data-id="${fdr.id}">Verify</button>
+            <button class="action-btn danger" data-action="reject" data-id="${fdr.id}">Reject</button>
           </div>`;
 
       const tr = document.createElement('tr');
@@ -110,31 +128,107 @@ async function loadOfficerQueue() {
         <td>${escapeHtml(fdr.institution_name || 'Institution')}</td>
         <td>${escapeHtml(fdr.bank_name)}</td>
         <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
-        <td>${escapeHtml(fdr.expiry_date)}</td>
+        <td>${formatDate(fdr.expiry_date)}</td>
         <td>${statusPill(fdr.status)}</td>
         <td>${actions}</td>`;
       rows.appendChild(tr);
     }
 
-    rows.querySelectorAll('[data-status]').forEach(button => {
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        try {
-          await api(`/api/fdr/${button.dataset.id}/status`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: button.dataset.status })
-          });
-          await loadOfficerQueue();
-          await loadFdrs();
-          await loadAudit();
-        } catch (error) {
-          alert(error.message);
-          button.disabled = false;
-        }
+    rows.querySelectorAll('[data-action]').forEach(button => {
+      button.addEventListener('click', () => {
+        const fdr = data.fdrs.find(item => item.id === button.dataset.id);
+        if (!fdr) return;
+        if (button.dataset.action === 'review') return openReviewModal(fdr);
+        openDecisionModal(fdr, button.dataset.action === 'verify' ? 'VERIFIED' : 'REJECTED');
       });
     });
   } catch (error) {
     $('officerRows').innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+function openReviewModal(fdr) {
+  state.selectedFdr = fdr;
+  $('reviewFdrNumber').textContent = fdr.fdr_number;
+  $('reviewInstitution').textContent = fdr.institution_name || '—';
+  $('reviewEmail').textContent = fdr.institution_email || '—';
+  $('reviewBank').textContent = fdr.bank_name || '—';
+  $('reviewAmount').textContent = `₹${Number(fdr.amount).toLocaleString('en-IN')}`;
+  $('reviewIssueDate').textContent = formatDate(fdr.issue_date);
+  $('reviewExpiryDate').textContent = formatDate(fdr.expiry_date);
+  $('reviewStatus').innerHTML = statusPill(fdr.status);
+  $('reviewCreated').textContent = formatDateTime(fdr.created_at);
+
+  const documentBox = $('reviewDocument');
+  if (fdr.document_url) {
+    documentBox.innerHTML = `<a class="document-link" href="${escapeHtml(fdr.document_url)}" target="_blank" rel="noopener">📄 Open ${escapeHtml(fdr.document_name || 'FDR document')}</a>`;
+  } else {
+    documentBox.innerHTML = `<span class="document-missing">📄 ${escapeHtml(fdr.document_name || 'No document attached')}</span><small>Document upload/link can be connected here.</small>`;
+  }
+
+  $('reviewModal').classList.remove('hidden');
+}
+
+function closeReviewModal() {
+  $('reviewModal').classList.add('hidden');
+  state.selectedFdr = null;
+}
+
+function openDecisionModal(fdr, status) {
+  state.selectedFdr = fdr;
+  state.decision = status;
+  $('decisionTitle').textContent = status === 'VERIFIED' ? 'Verify FDR' : 'Reject FDR';
+  $('decisionSubtitle').textContent = status === 'VERIFIED'
+    ? 'Confirm that the submitted FDR has been checked and is valid.'
+    : 'Provide a reason so the institution can understand the rejection.';
+  $('decisionFdr').textContent = fdr.fdr_number;
+  $('decisionNote').value = '';
+  $('decisionNote').placeholder = status === 'VERIFIED' ? 'Optional verification note' : 'Required rejection reason';
+  $('decisionConfirm').textContent = status === 'VERIFIED' ? 'Confirm verification' : 'Confirm rejection';
+  $('decisionConfirm').className = `primary ${status === 'REJECTED' ? 'danger-primary' : ''}`;
+  $('decisionModal').classList.remove('hidden');
+}
+
+function closeDecisionModal() {
+  $('decisionModal').classList.add('hidden');
+  state.selectedFdr = null;
+  state.decision = null;
+}
+
+async function updateFdrStatus(status, note = '') {
+  if (!state.selectedFdr) return;
+  const button = $('decisionConfirm');
+  button.disabled = true;
+  try {
+    await api(`/api/fdr/${state.selectedFdr.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note })
+    });
+    closeDecisionModal();
+    closeReviewModal();
+    await loadOfficerQueue();
+    await loadFdrs();
+    await loadAudit();
+  } catch (error) {
+    $('decisionMessage').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function markUnderReview() {
+  if (!state.selectedFdr) return;
+  try {
+    await api(`/api/fdr/${state.selectedFdr.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'UNDER_REVIEW', note: 'Officer opened the FDR for review.' })
+    });
+    closeReviewModal();
+    await loadOfficerQueue();
+    await loadFdrs();
+    await loadAudit();
+  } catch (error) {
+    alert(error.message);
   }
 }
 
@@ -147,12 +241,12 @@ async function loadAudit() {
     for (const log of data.logs) {
       const details = log.details ? JSON.stringify(log.details) : '';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${new Date(log.created_at).toLocaleString('en-IN')}</td>
+      tr.innerHTML = `<td>${formatDateTime(log.created_at)}</td>
         <td>${escapeHtml(log.actor_name || 'System')}</td>
         <td>${escapeHtml(log.actor_role || '—')}</td>
         <td>${escapeHtml(log.action)}</td>
         <td>${escapeHtml(log.entity_type)}</td>
-        <td>${escapeHtml(details)}</td>`;
+        <td class="audit-details" title="${escapeHtml(details)}">${escapeHtml(details)}</td>`;
       rows.appendChild(tr);
     }
   } catch (error) {
@@ -161,7 +255,7 @@ async function loadAudit() {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+  return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
 }
 
 document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
@@ -211,6 +305,34 @@ $('fdrForm').addEventListener('submit', async (event) => {
     setMessage('fdrMessage', 'FDR submitted successfully.', true);
     await loadFdrs();
   } catch (error) { setMessage('fdrMessage', error.message); }
+});
+
+$('decisionForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const note = $('decisionNote').value.trim();
+  if (state.decision === 'REJECTED' && !note) {
+    $('decisionMessage').textContent = 'Please enter a rejection reason.';
+    return;
+  }
+  await updateFdrStatus(state.decision, note);
+});
+
+$('reviewCloseBtn').addEventListener('click', closeReviewModal);
+$('reviewMarkBtn').addEventListener('click', markUnderReview);
+$('reviewVerifyBtn').addEventListener('click', () => {
+  if (state.selectedFdr) openDecisionModal(state.selectedFdr, 'VERIFIED');
+});
+$('reviewRejectBtn').addEventListener('click', () => {
+  if (state.selectedFdr) openDecisionModal(state.selectedFdr, 'REJECTED');
+});
+$('decisionCancel').addEventListener('click', closeDecisionModal);
+$('reviewModal').addEventListener('click', (event) => { if (event.target === $('reviewModal')) closeReviewModal(); });
+$('decisionModal').addEventListener('click', (event) => { if (event.target === $('decisionModal')) closeDecisionModal(); });
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeReviewModal();
+    closeDecisionModal();
+  }
 });
 
 $('refreshBtn').addEventListener('click', loadFdrs);
