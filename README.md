@@ -2,45 +2,85 @@
 
 ## SIH26265 — Streamline of Security Deposit / FDR Portal
 
-SecureFDR is a software-first FDR lifecycle management portal for institutions and reviewing officers.
+SecureFDR is a software-first FDR lifecycle management portal for institutions and reviewing officers. This branch is the **SIH26265 MVP**.
 
-### MVP flow
+## What is implemented
 
-Institution registers → logs in → receives a short-lived access token → submits an FDR → officer reviews it → status is updated → every important action is recorded in an audit log.
+- Responsive web dashboard
+- Institution registration and login
+- bcrypt password hashing
+- Short-lived JWT access tokens
+- Bearer-token authentication middleware
+- Role-based authorization for Institution / Officer / Admin
+- FDR submission and validation
+- Officer/Admin status updates
+- Audit logging for login, creation and status changes
+- PostgreSQL schema and indexes
+- Expiry/status fields ready for alert automation
 
-### Current components
+## Request flow
 
-- **Node.js + Express** API
-- **PostgreSQL** database
-- **JWT access tokens** for API authentication
-- **bcrypt** password hashing
-- **Role-based authorization** for institutions, officers and administrators
-- FDR lifecycle records and status tracking
-- Audit logging
+```text
+Browser
+  │
+  ├── POST /api/auth/register ──> bcrypt hash ──> PostgreSQL
+  │
+  ├── POST /api/auth/login ─────> bcrypt verify ─> JWT access token
+  │                                      │
+  │                                      └── Authorization: Bearer <token>
+  │
+  └── Protected FDR request ──> JWT middleware ──> role check ──> PostgreSQL
+                                                     │
+                                                     └── audit log
+```
 
-### Authentication flow
+## Project structure
 
-1. `POST /api/auth/register` creates a user and hashes the password with bcrypt.
-2. `POST /api/auth/login` verifies the password hash.
-3. The server signs a short-lived JWT containing the user ID, role and email.
-4. The client sends `Authorization: Bearer <token>` to protected endpoints.
-5. Authentication middleware verifies the JWT signature and expiry.
-6. Role middleware restricts institution/officer/admin operations.
+```text
+SecureFDR/
+├── public/
+│   ├── index.html       # Login + dashboard UI
+│   ├── styles.css       # Responsive portal styling
+│   └── app.js           # Browser API client and dashboard logic
+├── src/
+│   ├── schema.sql       # PostgreSQL tables/indexes
+│   └── server.js        # Express API, auth and FDR workflow
+├── .env.example
+├── .gitignore
+└── package.json
+```
 
-### Important security notes
+## Run locally
 
-- Never commit a real `.env` file or production secret.
-- Replace `JWT_SECRET` with a long random secret in the deployment environment.
-- Use HTTPS in production.
-- For production, add refresh-token/session rotation, MFA for privileged users, rate limiting, secure document storage, malware scanning for uploads, encryption at rest, stronger password policy, and institution-level authorization checks.
-- The current registration endpoint is an MVP convenience; production officer/admin accounts should be provisioned through an approved administrative workflow rather than allowing public self-registration.
+1. Install Node.js and PostgreSQL.
+2. Run `npm install`.
+3. Copy `.env.example` to `.env`.
+4. Set a real `DATABASE_URL` and long random `JWT_SECRET`.
+5. Run `src/schema.sql` against the PostgreSQL database.
+6. Start with `npm run dev`.
+7. Open `http://localhost:3000`.
 
-### Setup
+Example:
 
 ```bash
 npm install
 cp .env.example .env
-# configure DATABASE_URL and JWT_SECRET
-# run schema.sql against PostgreSQL
 npm run dev
 ```
+
+## Security notes
+
+- Never commit `.env` or production credentials.
+- Use HTTPS in production.
+- Public registration creates Institution accounts only; Officer/Admin accounts should be provisioned through an approved administrative workflow.
+- For production, add refresh-token/session rotation, MFA for privileged users, rate limiting, secure object storage, malware scanning for uploaded documents, encryption at rest, stronger password policy, and institution-level authorization checks.
+
+## Next SIH build
+
+1. Real FDR PDF upload and secure object storage.
+2. OCR/data extraction from uploaded FDR documents.
+3. AI-assisted field validation and anomaly detection.
+4. Officer review queue with approve/reject reasons.
+5. Automated expiry reminders and escalation alerts.
+6. Institution-wise and national dashboards.
+7. Demo seed data and SIH presentation/prototype assets.
