@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS fdr_records (
   document_url TEXT,
   verification_status TEXT NOT NULL DEFAULT 'NEEDS_REVIEW' CHECK (verification_status IN ('AUTO_PASSED','NEEDS_REVIEW')),
   verification_score NUMERIC(5,2) NOT NULL DEFAULT 0,
+  review_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE fdr_records ADD COLUMN IF NOT EXISTS review_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -48,5 +51,6 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
 CREATE INDEX IF NOT EXISTS fdr_institution_idx ON fdr_records(institution_id);
 CREATE INDEX IF NOT EXISTS fdr_expiry_idx ON fdr_records(expiry_date);
+CREATE INDEX IF NOT EXISTS fdr_status_idx ON fdr_records(status);
 CREATE INDEX IF NOT EXISTS audit_user_idx ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS document_verification_user_idx ON document_verifications(user_id);
