@@ -82,7 +82,20 @@ function formatDate(value) {
 
 function formatDateTime(value) {
   if (!value) return '—';
-  return new Date(value).toLocaleString('en-IN');
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-IN');
+}
+
+function verificationSummary(fdr) {
+  if (fdr.status === 'VERIFIED') {
+    const by = fdr.verified_by_name || 'Verification Officer';
+    return `<div class="verification-cell"><strong>✓ Verified</strong><span>${escapeHtml(by)}</span><small>${escapeHtml(formatDateTime(fdr.verified_at))}</small></div>`;
+  }
+  if (fdr.status === 'REJECTED') {
+    const by = fdr.verified_by_name || 'Verification Officer';
+    return `<div class="verification-cell rejected-text"><strong>✕ Rejected</strong><span>${escapeHtml(by)}</span><small>${escapeHtml(fdr.verification_note || 'Reason recorded')}</small></div>`;
+  }
+  return '<span class="muted-text">Awaiting officer decision</span>';
 }
 
 async function loadFdrs() {
@@ -98,7 +111,7 @@ async function loadFdrs() {
       <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
       <td>${formatDate(fdr.expiry_date)}</td>
       <td>${statusPill(fdr.status)}</td>
-      <td>${state.user.role === 'INSTITUTION' ? '—' : 'Verification queue'}</td>`;
+      <td>${verificationSummary(fdr)}</td>`;
     rows.appendChild(tr);
   }
 
@@ -158,6 +171,9 @@ function openReviewModal(fdr) {
   $('reviewExpiryDate').textContent = formatDate(fdr.expiry_date);
   $('reviewStatus').innerHTML = statusPill(fdr.status);
   $('reviewCreated').textContent = formatDateTime(fdr.created_at);
+  $('reviewVerifiedBy').textContent = fdr.verified_by_name || 'Not verified yet';
+  $('reviewVerifiedAt').textContent = formatDateTime(fdr.verified_at);
+  $('reviewVerificationNote').textContent = fdr.verification_note || 'No verification note recorded.';
 
   const documentBox = $('reviewDocument');
   if (fdr.document_url) {
