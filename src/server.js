@@ -165,7 +165,7 @@ app.post("/api/fdr/verify-document", authenticate, requireRole("INSTITUTION"), u
     const buffer = fs.readFileSync(req.file.path);
     const parsed = await pdfParse(buffer);
     const extraction = extractFdrFields(parsed.text || "");
-    const documentPath = `/uploads/${path.basename(req.file.path)}`;
+    const documentPath = `/api/documents/${path.basename(req.file.path)}`;
 
     await pool.query(
       `INSERT INTO document_verifications
@@ -186,7 +186,15 @@ app.post("/api/fdr/verify-document", authenticate, requireRole("INSTITUTION"), u
   }
 });
 
-app.use("/uploads", express.static(uploadDir, { index: false }));
+app.get("/api/documents/:filename", authenticate, async (req, res) => {
+  const file = path.join(uploadDir, path.basename(req.params.filename));
+  const result = await pool.query("SELECT user_id FROM document_verifications WHERE stored_path = $1 LIMIT 1", [`/api/documents/${path.basename(req.params.filename)}`]);
+  if (!result.rows[0]) return res.status(404).json({ error: "Document not found" });
+  const owner = result.rows[0].user_id;
+  if (req.user.role === "INSTITUTION" && req.user.sub !== owner) return res.status(403).json({ error: "Document access denied" });
+  if (!fs.existsSync(file)) return res.status(404).json({ error: "Document file not found" });
+  res.sendFile(file);
+});
 
 app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) => {
   const { fdrNumber, bankName, amount, issueDate, expiryDate, documentName, documentUrl, verification } = req.body;
@@ -211,29 +219,51 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
 
 app.get("/api/fdr", authenticate, async (req, res) => {
   const params = [];
-  let query = `SELECT * FROM fdr_records`;
+  let query = `SELECT f.*, u.name AS institution_name FROM fdr_records f JOIN users u ON u.id = f.institution_id`;
   if (req.user.role === "INSTITUTION") {
     params.push(req.user.sub);
-    query += " WHERE institution_id = $1";
+    query += " WHERE f.institution_id = $1";
   }
-  query += " ORDER BY created_at DESC";
+  query += " ORDER BY f.created_at DESC";
   const result = await pool.query(query, params);
   res.json({ fdrs: result.rows });
 });
 
+app.get("/api/review/queue", authenticate, requireRole("OFFICER", "ADMIN"), async (_req, res) => {
+  const result = await pool.query(
+    `SELECT f.*, u.name AS institution_name, u.email AS institution_email
+     FROM fdr_records f
+     JOIN users u ON u.id = f.institution_id
+     WHERE f.status IN ('SUBMITTED','UNDER_REVIEW')
+     ORDER BY f.created_at ASC`
+  );
+  res.json({ queue: result.rows });
+});
+
 app.patch("/api/fdr/:id/status", authenticate, requireRole("OFFICER", "ADMIN"), async (req, res) => {
-  const { status } = req.body;
+  const { status, reason } = req.body;
   const allowed = ["UNDER_REVIEW", "VERIFIED", "REJECTED", "EXPIRING", "EXPIRED"];
   if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid FDR status" });
+  if (status === "REJECTED" && !String(reason || "").trim()) return res.status(400).json({ error: "A rejection reason is required" });
 
-  const result = await pool.query("UPDATE fdr_records SET status = $1 WHERE id = $2 RETURNING *", [status, req.params.id]);
+  const result = await pool.query(
+    "UPDATE fdr_records SET status = $1, review_reason = $2 WHERE id = $3 RETURNING *",
+    [status, reason ? String(reason).trim() : null, req.params.id]
+  );
   if (!result.rows[0]) return res.status(404).json({ error: "FDR not found" });
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
      VALUES ($1,'STATUS_CHANGE','FDR',$2,$3)`,
-    [req.user.sub, req.params.id, JSON.stringify({ status })]
+    [req.user.sub, req.params.id, JSON.stringify({ status, reason: reason || null })]
   );
   res.json({ fdr: result.rows[0] });
+});
+
+app.use((error, _req, res, _next) => {
+  if (error instanceof multer.MulterError) return res.status(400).json({ error: error.code === "LIMIT_FILE_SIZE" ? "PDF must be 5 MB or smaller" : error.message });
+  if (error?.message === "Only PDF FDR documents are allowed") return res.status(400).json({ error: error.message });
+  console.error(error);
+  res.status(500).json({ error: "Unexpected server error" });
 });
 
 app.get(/.*/, (_req, res) => res.sendFile(path.join(__dirname, "../public/index.html")));
