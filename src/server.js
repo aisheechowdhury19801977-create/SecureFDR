@@ -146,16 +146,30 @@ app.get("/api/fdr", authenticate, async (req, res) => {
 });
 
 app.patch("/api/fdr/:id/status", authenticate, requireRole("OFFICER", "ADMIN"), async (req, res) => {
-  const { status } = req.body;
-  const allowed = ["UNDER_REVIEW", "VERIFIED", "REJECTED", "EXPIRING", "EXPIRED"];
-  if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid FDR status" });
+  const { status, note } = req.body;
+  const allowed = ["UNDER_REVIEW", "VERIFIED", "REJECTED"];
+  if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid verification status" });
 
-  const result = await pool.query("UPDATE fdr_records SET status = $1 WHERE id = $2 RETURNING *", [status, req.params.id]);
-  if (!result.rows[0]) return res.status(404).json({ error: "FDR not found" });
+  const current = await pool.query("SELECT * FROM fdr_records WHERE id = $1", [req.params.id]);
+  if (!current.rows[0]) return res.status(404).json({ error: "FDR not found" });
+
+  const existing = current.rows[0];
+  if (["VERIFIED", "REJECTED"].includes(existing.status)) {
+    return res.status(409).json({ error: `FDR is already ${existing.status.toLowerCase()}` });
+  }
+  if (status === "REJECTED" && !String(note || "").trim()) {
+    return res.status(400).json({ error: "A rejection reason is required" });
+  }
+
+  const cleanNote = String(note || "").trim().slice(0, 1000) || null;
+  const result = await pool.query(
+    "UPDATE fdr_records SET status = $1 WHERE id = $2 RETURNING *",
+    [status, req.params.id]
+  );
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
      VALUES ($1,'STATUS_CHANGE','FDR',$2,$3)`,
-    [req.user.sub, req.params.id, JSON.stringify({ status })]
+    [req.user.sub, req.params.id, JSON.stringify({ status, note: cleanNote })]
   );
   res.json({ fdr: result.rows[0] });
 });
