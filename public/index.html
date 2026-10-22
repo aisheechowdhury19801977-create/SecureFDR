@@ -18,7 +18,7 @@
         <p class="eyebrow">SIH26265 • Smart Automation</p>
         <h1>Secure the complete FDR lifecycle.</h1>
         <p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p>
-        <div class="feature-row"><span>🔐 Secure login</span><span>📄 PDF verification</span><span>📊 Live dashboard</span></div>
+        <div class="feature-row"><span>🔐 Secure login</span><span>📄 PDF verification</span><span>🧠 Smart validation</span><span>📊 Review dashboard</span></div>
       </div>
       <div class="card auth-card">
         <div class="tabs"><button class="tab active" data-tab="login">Login</button><button class="tab" data-tab="register">Register</button></div>
@@ -63,9 +63,15 @@
         </form>
       </div>
 
+      <div id="reviewPanel" class="card panel hidden">
+        <div class="panel-head"><div><h3>Officer verification queue</h3><p>Review automated checks before approving an FDR.</p></div><button id="refreshQueueBtn" class="ghost">Refresh queue</button></div>
+        <div id="queueEmpty" class="message">No pending FDRs.</div>
+        <div class="table-wrap"><table><thead><tr><th>Institution</th><th>FDR</th><th>Amount</th><th>AI check</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="queueRows"></tbody></table></div>
+      </div>
+
       <div class="card panel">
         <div class="panel-head"><div><h3>FDR records</h3><p>Status updates, verification score and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div>
-        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Verification</th><th>Status</th><th>Action</th></tr></thead><tbody id="fdrRows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Verification</th><th>Status</th></tr></thead><tbody id="fdrRows"></tbody></table></div>
       </div>
     </section>
   </main>
