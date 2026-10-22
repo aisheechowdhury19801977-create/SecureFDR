@@ -40,10 +40,20 @@ function requireRole(...roles) {
   };
 }
 
+async function ensureVerificationColumns() {
+  await pool.query(`
+    ALTER TABLE fdr_records
+      ADD COLUMN IF NOT EXISTS verified_by UUID REFERENCES users(id),
+      ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS verification_note TEXT
+  `);
+}
+
 app.get("/health", async (_req, res) => {
   if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: "DATABASE_URL is not configured" });
   try {
     await pool.query("SELECT 1");
+    await ensureVerificationColumns();
     res.json({ ok: true, service: "SecureFDR" });
   } catch (error) {
     console.error("Database health check failed:", error);
@@ -133,9 +143,11 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
 
 app.get("/api/fdr", authenticate, async (req, res) => {
   const params = [];
-  let query = `SELECT f.*, u.name AS institution_name, u.email AS institution_email
+  let query = `SELECT f.*, u.name AS institution_name, u.email AS institution_email,
+                      v.name AS verified_by_name, v.email AS verified_by_email
                FROM fdr_records f
-               JOIN users u ON u.id = f.institution_id`;
+               JOIN users u ON u.id = f.institution_id
+               LEFT JOIN users v ON v.id = f.verified_by`;
   if (req.user.role === "INSTITUTION") {
     params.push(req.user.sub);
     query += " WHERE f.institution_id = $1";
@@ -162,10 +174,25 @@ app.patch("/api/fdr/:id/status", authenticate, requireRole("OFFICER", "ADMIN"), 
   }
 
   const cleanNote = String(note || "").trim().slice(0, 1000) || null;
-  const result = await pool.query(
-    "UPDATE fdr_records SET status = $1 WHERE id = $2 RETURNING *",
-    [status, req.params.id]
-  );
+  const result = status === "VERIFIED"
+    ? await pool.query(
+        `UPDATE fdr_records
+         SET status = $1, verified_by = $2, verified_at = NOW(), verification_note = $3
+         WHERE id = $4 RETURNING *`,
+        [status, req.user.sub, cleanNote, req.params.id]
+      )
+    : status === "REJECTED"
+      ? await pool.query(
+          `UPDATE fdr_records
+           SET status = $1, verified_by = $2, verified_at = NOW(), verification_note = $3
+           WHERE id = $4 RETURNING *`,
+          [status, req.user.sub, cleanNote, req.params.id]
+        )
+      : await pool.query(
+          "UPDATE fdr_records SET status = $1 WHERE id = $2 RETURNING *",
+          [status, req.params.id]
+        );
+
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
      VALUES ($1,'STATUS_CHANGE','FDR',$2,$3)`,
