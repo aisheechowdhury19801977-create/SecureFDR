@@ -130,9 +130,16 @@
     if (!token || !panel) return;
 
     try {
-      const response = await fetch('/api/fdr', { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) return;
-      const data = await response.json();
+      const [fdrResponse, meResponse] = await Promise.all([
+        fetch('/api/fdr', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/me', { headers: { Authorization: `Bearer ${token}` } })
+      ]);
+      if (!fdrResponse.ok || !meResponse.ok) return;
+
+      const data = await fdrResponse.json();
+      const me = await meResponse.json();
+      const canUpload = ['INSTITUTION', 'ADMIN'].includes(me.user?.role);
+
       const table = panel.querySelector('table');
       const head = table?.querySelector('thead tr');
       const rows = table?.querySelectorAll('tbody tr');
@@ -204,9 +211,12 @@
 
           actions.append(view, download);
           cell.appendChild(actions);
-        } else {
+        } else if (canUpload) {
           cell.innerHTML = '';
           createUploadControl(fdr, cell, enhanceRecordTable);
+        } else {
+          cell.textContent = 'No certificate';
+          cell.className = 'muted-text';
         }
       });
     } catch (error) {
