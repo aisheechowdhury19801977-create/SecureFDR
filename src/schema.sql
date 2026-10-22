@@ -20,8 +20,16 @@ CREATE TABLE IF NOT EXISTS fdr_records (
   status TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED','UNDER_REVIEW','VERIFIED','REJECTED','EXPIRING','EXPIRED')),
   document_name TEXT,
   document_url TEXT,
+  verified_by UUID REFERENCES users(id),
+  verified_at TIMESTAMPTZ,
+  verification_note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE fdr_records
+  ADD COLUMN IF NOT EXISTS verified_by UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS verification_note TEXT;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -36,3 +44,4 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS fdr_institution_idx ON fdr_records(institution_id);
 CREATE INDEX IF NOT EXISTS fdr_expiry_idx ON fdr_records(expiry_date);
 CREATE INDEX IF NOT EXISTS audit_user_idx ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS fdr_verified_by_idx ON fdr_records(verified_by);
