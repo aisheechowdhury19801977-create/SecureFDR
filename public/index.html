@@ -18,7 +18,7 @@
         <p class="eyebrow">SIH26265 • Smart Automation</p>
         <h1>Secure the complete FDR lifecycle.</h1>
         <p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p>
-        <div class="feature-row"><span>🔐 Secure login</span><span>📄 FDR workflow</span><span>📊 Live dashboard</span></div>
+        <div class="feature-row"><span>🔐 Secure login</span><span>📄 FDR workflow</span><span>📊 Live dashboard</span><span>🛡️ Officer verification</span></div>
       </div>
       <div class="card auth-card">
         <div class="tabs"><button class="tab active" data-tab="login">Login</button><button class="tab" data-tab="register">Register</button></div>
@@ -55,7 +55,17 @@
         </form>
       </div>
 
-      <div class="card panel">
+      <div id="officerPanel" class="card panel hidden">
+        <div class="panel-head"><div><h3>Officer verification queue</h3><p>Review submitted FDRs and record a decision.</p></div><button id="refreshOfficerBtn" class="ghost">Refresh queue</button></div>
+        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Decision</th></tr></thead><tbody id="officerRows"></tbody></table></div>
+      </div>
+
+      <div id="auditPanel" class="card panel hidden">
+        <div class="panel-head"><div><h3>Audit trail</h3><p>Recent authentication and FDR lifecycle actions.</p></div><button id="refreshAuditBtn" class="ghost">Refresh audit</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Role</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="auditRows"></tbody></table></div>
+      </div>
+
+      <div id="recordsPanel" class="card panel">
         <div class="panel-head"><div><h3>FDR records</h3><p>Status updates and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div>
         <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Action</th></tr></thead><tbody id="fdrRows"></tbody></table></div>
       </div>
