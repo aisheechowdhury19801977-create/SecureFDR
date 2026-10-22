@@ -10,7 +10,7 @@ const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 function signToken(user) {
@@ -38,6 +38,16 @@ function requireRole(...roles) {
     if (!roles.includes(req.user.role)) return res.status(403).json({ error: "Insufficient permissions" });
     next();
   };
+}
+
+function validateDocument(documentUrl) {
+  if (!documentUrl) return { ok: true };
+  if (typeof documentUrl !== "string") return { ok: false, error: "Invalid certificate data" };
+  if (!/^data:(application\/pdf|image\/jpeg|image\/png);base64,/i.test(documentUrl)) {
+    return { ok: false, error: "Certificate must be a PDF, JPG or PNG" };
+  }
+  if (documentUrl.length > 1500000) return { ok: false, error: "Certificate is too large" };
+  return { ok: true };
 }
 
 async function ensureVerificationColumns() {
@@ -131,6 +141,8 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
     return res.status(400).json({ error: "Valid FDR number, bank, amount and dates are required" });
   }
   if (new Date(expiryDate) <= new Date(issueDate)) return res.status(400).json({ error: "Expiry date must be after issue date" });
+  const documentCheck = validateDocument(documentUrl);
+  if (!documentCheck.ok) return res.status(400).json({ error: documentCheck.error });
 
   try {
     const result = await pool.query(
@@ -152,9 +164,40 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
   }
 });
 
+app.patch("/api/fdr/:id/document", authenticate, requireRole("INSTITUTION", "ADMIN"), async (req, res) => {
+  const { documentName, documentUrl } = req.body;
+  if (!documentUrl) return res.status(400).json({ error: "Certificate file is required" });
+  const documentCheck = validateDocument(documentUrl);
+  if (!documentCheck.ok) return res.status(400).json({ error: documentCheck.error });
+
+  try {
+    const result = req.user.role === "ADMIN"
+      ? await pool.query(
+          `UPDATE fdr_records SET document_name = $1, document_url = $2 WHERE id = $3 RETURNING *`,
+          [documentName || "FDR_certificate", documentUrl, req.params.id]
+        )
+      : await pool.query(
+          `UPDATE fdr_records SET document_name = $1, document_url = $2
+           WHERE id = $3 AND institution_id = $4 RETURNING *`,
+          [documentName || "FDR_certificate", documentUrl, req.params.id, req.user.sub]
+        );
+
+    if (!result.rows[0]) return res.status(404).json({ error: "FDR not found" });
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
+       VALUES ($1,'DOCUMENT_UPLOAD','FDR',$2,$3)`,
+      [req.user.sub, req.params.id, JSON.stringify({ documentName: documentName || "FDR_certificate" })]
+    );
+    res.json({ fdr: result.rows[0] });
+  } catch (error) {
+    console.error("FDR document upload database error:", error);
+    if (error.code === "42P01") return res.status(503).json({ error: "Database schema is not initialized. Run src/schema.sql." });
+    res.status(500).json({ error: "Unable to attach certificate" });
+  }
+});
+
 app.get("/api/fdr", authenticate, async (req, res) => {
   try {
-    // Keep production databases compatible with the latest verification fields.
     await ensureVerificationColumns();
 
     const params = [];
