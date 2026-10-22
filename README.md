@@ -13,12 +13,39 @@ SecureFDR is a software-first FDR lifecycle management portal for institutions a
 - Bearer-token authentication middleware
 - Role-based authorization for Institution / Officer / Admin
 - FDR submission and validation
+- FDR PDF upload (5 MB, PDF only)
+- Automated PDF text extraction and field verification
+- FDR number, bank, amount and date extraction
+- Verification confidence score and review flags
 - Officer/Admin status updates
-- Audit logging for login, creation and status changes
+- Audit logging for login, document verification, creation and status changes
 - PostgreSQL schema and indexes
 - Expiry/status fields ready for alert automation
 
-## Request flow
+## Document verification flow
+
+```text
+Institution
+   │
+   ├── Upload FDR PDF
+   │        ↓
+   │   PDF text extraction
+   │        ↓
+   │   Field extraction
+   │   (FDR no. / bank / amount / dates)
+   │        ↓
+   │   Consistency checks
+   │        ↓
+   ├── Confidence score + issues
+   │        ↓
+   └── Submit corrected/verified fields
+             ↓
+       Officer review queue
+```
+
+The current verifier is a deterministic MVP parser and consistency checker. It is deliberately **not** presented as a production AI/fraud detector. The next layer can replace or augment extraction with OCR and an AI validation service.
+
+## Authentication request flow
 
 ```text
 Browser
@@ -29,9 +56,9 @@ Browser
   │                                      │
   │                                      └── Authorization: Bearer <token>
   │
-  └── Protected FDR request ──> JWT middleware ──> role check ──> PostgreSQL
-                                                     │
-                                                     └── audit log
+  └── Protected request ────────> JWT middleware ──> role check ──> PostgreSQL
+                                                         │
+                                                         └── audit log
 ```
 
 ## Project structure
@@ -39,12 +66,12 @@ Browser
 ```text
 SecureFDR/
 ├── public/
-│   ├── index.html       # Login + dashboard UI
+│   ├── index.html       # Login, upload and dashboard UI
 │   ├── styles.css       # Responsive portal styling
 │   └── app.js           # Browser API client and dashboard logic
 ├── src/
 │   ├── schema.sql       # PostgreSQL tables/indexes
-│   └── server.js        # Express API, auth and FDR workflow
+│   └── server.js        # Express API, auth, upload and verification workflow
 ├── .env.example
 ├── .gitignore
 └── package.json
@@ -71,16 +98,17 @@ npm run dev
 ## Security notes
 
 - Never commit `.env` or production credentials.
+- Uploaded PDFs are excluded from Git via `.gitignore`.
 - Use HTTPS in production.
 - Public registration creates Institution accounts only; Officer/Admin accounts should be provisioned through an approved administrative workflow.
-- For production, add refresh-token/session rotation, MFA for privileged users, rate limiting, secure object storage, malware scanning for uploaded documents, encryption at rest, stronger password policy, and institution-level authorization checks.
+- The MVP stores uploads on local disk. Production should use private object storage with signed access URLs, malware scanning, encryption at rest and retention controls.
+- For production, add refresh-token/session rotation, MFA for privileged users, rate limiting, stronger password policy, institution-level authorization checks, and tamper-resistant audit storage.
 
 ## Next SIH build
 
-1. Real FDR PDF upload and secure object storage.
-2. OCR/data extraction from uploaded FDR documents.
-3. AI-assisted field validation and anomaly detection.
-4. Officer review queue with approve/reject reasons.
-5. Automated expiry reminders and escalation alerts.
-6. Institution-wise and national dashboards.
-7. Demo seed data and SIH presentation/prototype assets.
+1. OCR fallback for scanned/image-only FDR PDFs.
+2. AI-assisted field validation and anomaly detection.
+3. Officer review queue with approve/reject reasons.
+4. Automated expiry reminders and escalation alerts.
+5. Institution-wise and national dashboards.
+6. Demo seed data and SIH presentation/prototype assets.
