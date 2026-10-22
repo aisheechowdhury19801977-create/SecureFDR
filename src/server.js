@@ -10,9 +10,9 @@ const pdfParse = require("pdf-parse");
 const { Pool } = require("pg");
 
 const app = express();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined });
 const uploadDir = path.join(__dirname, "../uploads");
-fs.mkdirSync(uploadDir, { recursive: true });
+if (process.env.NODE_ENV !== "production") fs.mkdirSync(uploadDir, { recursive: true });
 
 const upload = multer({
   dest: uploadDir,
@@ -23,36 +23,25 @@ const upload = multer({
   }
 });
 
-app.use(cors());
+app.set("trust proxy", 1);
+app.use(cors({ origin: process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.split(",").map(v => v.trim()) : true, credentials: false }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 function signToken(user) {
-  return jwt.sign(
-    { sub: user.id, role: user.role, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "15m" }
-  );
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error("JWT_SECRET must be configured with at least 32 characters");
+  return jwt.sign({ sub: user.id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "15m" });
 }
 
 async function authenticate(req, res, next) {
   const header = req.headers.authorization || "";
   const [scheme, token] = header.split(" ");
   if (scheme !== "Bearer" || !token) return res.status(401).json({ error: "Authentication required" });
-  try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired token" });
-  }
+  try { req.user = jwt.verify(token, process.env.JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: "Invalid or expired token" }); }
 }
 
-function requireRole(...roles) {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) return res.status(403).json({ error: "Insufficient permissions" });
-    next();
-  };
-}
+function requireRole(...roles) { return (req, res, next) => roles.includes(req.user.role) ? next() : res.status(403).json({ error: "Insufficient permissions" }); }
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -68,27 +57,19 @@ function extractFdrFields(text) {
   const amountMatch = clean.match(/(?:amount|principal|value|deposit)\s*(?:amount)?\s*[:=-]?\s*(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)/i);
   const bankMatch = clean.match(/(?:bank(?: name)?|banking institution)\s*[:=-]\s*([A-Za-z][A-Za-z &.\-]{2,70})/i);
   const dateMatches = [...clean.matchAll(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{4}\b/g)].map(m => m[0]);
-
   const issueDate = normalizeDate(dateMatches[0]);
   const expiryDate = normalizeDate(dateMatches[1]);
   const amount = amountMatch ? Number(amountMatch[1].replace(/,/g, "")) : null;
   const fdrNumber = fdrMatch ? fdrMatch[1].replace(/\s/g, "") : null;
   const bankName = bankMatch ? bankMatch[1].trim().replace(/[.,;]$/, "") : null;
-
   let score = 0;
-  if (fdrNumber) score += 30;
-  if (bankName) score += 25;
-  if (amount) score += 20;
-  if (issueDate) score += 12.5;
-  if (expiryDate) score += 12.5;
-
+  if (fdrNumber) score += 30; if (bankName) score += 25; if (amount) score += 20; if (issueDate) score += 12.5; if (expiryDate) score += 12.5;
   const issues = [];
   if (!fdrNumber) issues.push("FDR number could not be confidently extracted");
   if (!bankName) issues.push("Bank name could not be confidently extracted");
   if (!amount) issues.push("Deposit amount could not be confidently extracted");
   if (!issueDate || !expiryDate) issues.push("Issue/expiry dates could not both be extracted");
   if (issueDate && expiryDate && new Date(expiryDate) <= new Date(issueDate)) issues.push("Expiry date is not after issue date");
-
   return { fdrNumber, bankName, amount, issueDate, expiryDate, confidence: Math.round(score), passed: score >= 75 && issues.length === 0, issues };
 }
 
@@ -105,10 +86,7 @@ app.post("/api/auth/register", async (req, res) => {
   try {
     const result = await pool.query(`INSERT INTO users (name, email, password_hash, role) VALUES ($1, LOWER($2), $3, 'INSTITUTION') RETURNING id, name, email, role`, [name.trim(), email.trim(), passwordHash]);
     res.status(201).json({ user: result.rows[0] });
-  } catch (error) {
-    if (error.code === "23505") return res.status(409).json({ error: "Email already registered" });
-    console.error(error); res.status(500).json({ error: "Unable to create account" });
-  }
+  } catch (error) { if (error.code === "23505") return res.status(409).json({ error: "Email already registered" }); console.error(error); res.status(500).json({ error: "Unable to create account" }); }
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -136,7 +114,8 @@ app.post("/api/fdr/verify-document", authenticate, requireRole("INSTITUTION"), u
     const extraction = extractFdrFields(parsed.text || "");
     const documentPath = `/api/documents/${path.basename(req.file.path)}`;
     await pool.query(`INSERT INTO document_verifications (user_id, original_filename, stored_path, extracted_data, confidence, passed) VALUES ($1,$2,$3,$4,$5,$6)`, [req.user.sub, req.file.originalname, documentPath, JSON.stringify(extraction), extraction.confidence, extraction.passed]);
-    res.json({ message: extraction.passed ? "Document passed the initial automated checks" : "Document needs review or correction", documentPath, extraction });
+    if (process.env.NODE_ENV === "production") { try { fs.unlinkSync(req.file.path); } catch {} }
+    res.json({ message: extraction.passed ? "Document passed the initial automated checks" : "Document needs review or correction", documentPath, extraction, storageWarning: process.env.NODE_ENV === "production" ? "Configure object storage before enabling production document retrieval." : null });
   } catch (error) {
     try { fs.unlinkSync(req.file.path); } catch {}
     console.error(error); res.status(422).json({ error: "Unable to read or verify this PDF" });
@@ -144,8 +123,8 @@ app.post("/api/fdr/verify-document", authenticate, requireRole("INSTITUTION"), u
 });
 
 app.get("/api/documents/:filename", authenticate, async (req, res) => {
-  const filename = path.basename(req.params.filename);
-  const file = path.join(uploadDir, filename);
+  if (process.env.NODE_ENV === "production") return res.status(501).json({ error: "Persistent object storage is required for production document retrieval" });
+  const filename = path.basename(req.params.filename); const file = path.join(uploadDir, filename);
   const result = await pool.query("SELECT user_id FROM document_verifications WHERE stored_path = $1 LIMIT 1", [`/api/documents/${filename}`]);
   if (!result.rows[0]) return res.status(404).json({ error: "Document not found" });
   if (req.user.role === "INSTITUTION" && req.user.sub !== result.rows[0].user_id) return res.status(403).json({ error: "Document access denied" });
@@ -163,30 +142,24 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
 });
 
 app.get("/api/fdr", authenticate, async (req, res) => {
-  const params = [];
-  let query = `SELECT f.*, u.name AS institution_name FROM fdr_records f JOIN users u ON u.id = f.institution_id`;
+  const params = []; let query = `SELECT f.*, u.name AS institution_name FROM fdr_records f JOIN users u ON u.id = f.institution_id`;
   if (req.user.role === "INSTITUTION") { params.push(req.user.sub); query += " WHERE f.institution_id = $1"; }
-  query += " ORDER BY f.created_at DESC";
-  const result = await pool.query(query, params);
-  res.json({ fdrs: result.rows });
+  query += " ORDER BY f.created_at DESC"; const result = await pool.query(query, params); res.json({ fdrs: result.rows });
 });
 
 app.get("/api/review/queue", authenticate, requireRole("OFFICER", "ADMIN"), async (_req, res) => {
-  const result = await pool.query(`SELECT f.*, u.name AS institution_name, u.email AS institution_email FROM fdr_records f JOIN users u ON u.id = f.institution_id WHERE f.status IN ('SUBMITTED','UNDER_REVIEW') ORDER BY f.created_at ASC`);
-  res.json({ queue: result.rows });
+  const result = await pool.query(`SELECT f.*, u.name AS institution_name, u.email AS institution_email FROM fdr_records f JOIN users u ON u.id = f.institution_id WHERE f.status IN ('SUBMITTED','UNDER_REVIEW') ORDER BY f.created_at ASC`); res.json({ queue: result.rows });
 });
 
 app.get("/api/dashboard", authenticate, async (req, res) => {
-  const params = req.user.role === "INSTITUTION" ? [req.user.sub] : [];
-  const where = req.user.role === "INSTITUTION" ? "WHERE institution_id = $1" : "";
+  const params = req.user.role === "INSTITUTION" ? [req.user.sub] : []; const where = req.user.role === "INSTITUTION" ? "WHERE institution_id = $1" : "";
   const summary = await pool.query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='VERIFIED')::int AS verified, COUNT(*) FILTER (WHERE status IN ('SUBMITTED','UNDER_REVIEW'))::int AS pending, COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE)::int AS expired, COUNT(*) FILTER (WHERE expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '30 days')::int AS expiring_30, COALESCE(SUM(amount),0)::numeric AS total_value FROM fdr_records ${where}`, params);
   const alerts = await pool.query(`SELECT f.id, f.fdr_number, f.bank_name, f.amount, f.expiry_date, f.status, u.name AS institution_name, CASE WHEN f.expiry_date < CURRENT_DATE THEN 'EXPIRED' ELSE 'EXPIRING_SOON' END AS alert_type, GREATEST(0, (f.expiry_date - CURRENT_DATE))::int AS days_remaining FROM fdr_records f JOIN users u ON u.id=f.institution_id ${req.user.role === "INSTITUTION" ? "WHERE f.institution_id=$1 AND f.expiry_date <= CURRENT_DATE + INTERVAL '30 days'" : "WHERE f.expiry_date <= CURRENT_DATE + INTERVAL '30 days'"} ORDER BY f.expiry_date ASC LIMIT 20`, params);
   res.json({ summary: summary.rows[0], alerts: alerts.rows });
 });
 
 app.patch("/api/fdr/:id/status", authenticate, requireRole("OFFICER", "ADMIN"), async (req, res) => {
-  const { status, reason } = req.body;
-  const allowed = ["UNDER_REVIEW", "VERIFIED", "REJECTED", "EXPIRING", "EXPIRED"];
+  const { status, reason } = req.body; const allowed = ["UNDER_REVIEW", "VERIFIED", "REJECTED", "EXPIRING", "EXPIRED"];
   if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid FDR status" });
   if (status === "REJECTED" && !String(reason || "").trim()) return res.status(400).json({ error: "A rejection reason is required" });
   const result = await pool.query("UPDATE fdr_records SET status = $1, review_reason = $2 WHERE id = $3 RETURNING *", [status, reason ? String(reason).trim() : null, req.params.id]);
@@ -204,4 +177,5 @@ app.use((error, _req, res, _next) => {
 app.get(/.*/, (_req, res) => res.sendFile(path.join(__dirname, "../public/index.html")));
 
 const port = Number(process.env.PORT || 3000);
-app.listen(port, () => console.log(`SecureFDR API listening on ${port}`));
+if (require.main === module) app.listen(port, () => console.log(`SecureFDR API listening on ${port}`));
+module.exports = app;
