@@ -1,4 +1,4 @@
-const state = { token: localStorage.getItem('securefdr_token'), user: null };
+const state = { token: localStorage.getItem('securefdr_token'), user: null, verification: null };
 const $ = (id) => document.getElementById(id);
 
 function setMessage(id, text, ok = false) {
@@ -58,10 +58,12 @@ async function loadFdrs() {
     const tr = document.createElement('tr');
     const action = state.user.role === 'OFFICER' || state.user.role === 'ADMIN'
       ? `<button class="action-btn" data-id="${fdr.id}">Verify</button>` : '—';
+    const verification = fdr.verification_score >= 75 ? `✓ ${fdr.verification_score}%` : `⚠ ${fdr.verification_score}%`;
     tr.innerHTML = `<td><strong>${escapeHtml(fdr.fdr_number)}</strong></td>
       <td>${escapeHtml(fdr.bank_name)}</td>
       <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
       <td>${fdr.expiry_date}</td>
+      <td>${verification}</td>
       <td><span class="pill ${fdr.status.toLowerCase()}">${fdr.status.replaceAll('_',' ')}</span></td>
       <td>${action}</td>`;
     rows.appendChild(tr);
@@ -108,34 +110,66 @@ $('registerForm').addEventListener('submit', async (event) => {
     await api('/api/auth/register', { method: 'POST', body: JSON.stringify({
       name: $('registerName').value,
       email: $('registerEmail').value,
-      password: $('registerPassword').value,
-      role: $('registerRole').value
+      password: $('registerPassword').value
     }) });
-    setMessage('authMessage', 'Account created. You can now log in.', true);
+    setMessage('authMessage', 'Institution account created. You can now log in.', true);
     document.querySelector('[data-tab="login"]').click();
   } catch (error) { setMessage('authMessage', error.message); }
+});
+
+$('verifyBtn').addEventListener('click', async () => {
+  const file = $('documentFile').files[0];
+  if (!file) return setMessage('verifyMessage', 'Choose an FDR PDF first.');
+  if (file.type !== 'application/pdf') return setMessage('verifyMessage', 'Only PDF documents are accepted.');
+
+  const formData = new FormData();
+  formData.append('document', file);
+  setMessage('verifyMessage', 'Reading PDF and checking FDR fields...', true);
+  try {
+    const data = await api('/api/fdr/verify-document', { method: 'POST', body: formData });
+    state.verification = data.extraction;
+    $('documentName').value = file.name;
+    $('fdrNumber').value = data.extraction.fdrNumber || '';
+    $('bankName').value = data.extraction.bankName || '';
+    $('amount').value = data.extraction.amount || '';
+    $('issueDate').value = data.extraction.issueDate || '';
+    $('expiryDate').value = data.extraction.expiryDate || '';
+    $('verificationPanel').classList.remove('hidden');
+    const issues = data.extraction.issues.length ? `<br>Issues: ${data.extraction.issues.map(escapeHtml).join(' • ')}` : '';
+    $('verificationSummary').innerHTML = `${escapeHtml(data.message)}<br>Confidence: <strong>${data.extraction.confidence}%</strong>${issues}`;
+    setMessage('verifyMessage', 'Document verification completed.', true);
+  } catch (error) {
+    state.verification = null;
+    setMessage('verifyMessage', error.message);
+  }
 });
 
 $('fdrForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
+    if (!$('documentFile').files[0]) throw new Error('Upload and verify the FDR PDF before submitting.');
     await api('/api/fdr', { method: 'POST', body: JSON.stringify({
       fdrNumber: $('fdrNumber').value,
       bankName: $('bankName').value,
       amount: Number($('amount').value),
       issueDate: $('issueDate').value,
       expiryDate: $('expiryDate').value,
-      documentName: $('documentName').value
+      documentName: $('documentName').value,
+      documentUrl: null,
+      verification: state.verification
     }) });
     event.target.reset();
-    setMessage('fdrMessage', 'FDR submitted successfully.', true);
+    $('verificationPanel').classList.add('hidden');
+    $('verifyMessage').textContent = '';
+    state.verification = null;
+    setMessage('fdrMessage', 'FDR submitted successfully for officer review.', true);
     loadFdrs();
   } catch (error) { setMessage('fdrMessage', error.message); }
 });
 
 $('refreshBtn').addEventListener('click', loadFdrs);
 $('logoutBtn').addEventListener('click', () => {
-  state.token = null; state.user = null;
+  state.token = null; state.user = null; state.verification = null;
   localStorage.removeItem('securefdr_token');
   showAuth();
 });
