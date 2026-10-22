@@ -133,12 +133,14 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
 
 app.get("/api/fdr", authenticate, async (req, res) => {
   const params = [];
-  let query = `SELECT * FROM fdr_records`;
+  let query = `SELECT f.*, u.name AS institution_name, u.email AS institution_email
+               FROM fdr_records f
+               JOIN users u ON u.id = f.institution_id`;
   if (req.user.role === "INSTITUTION") {
     params.push(req.user.sub);
-    query += " WHERE institution_id = $1";
+    query += " WHERE f.institution_id = $1";
   }
-  query += " ORDER BY created_at DESC";
+  query += " ORDER BY f.created_at DESC";
   const result = await pool.query(query, params);
   res.json({ fdrs: result.rows });
 });
@@ -156,6 +158,18 @@ app.patch("/api/fdr/:id/status", authenticate, requireRole("OFFICER", "ADMIN"), 
     [req.user.sub, req.params.id, JSON.stringify({ status })]
   );
   res.json({ fdr: result.rows[0] });
+});
+
+app.get("/api/audit", authenticate, requireRole("OFFICER", "ADMIN"), async (_req, res) => {
+  const result = await pool.query(
+    `SELECT a.id, a.action, a.entity_type, a.entity_id, a.details, a.created_at,
+            u.name AS actor_name, u.email AS actor_email, u.role AS actor_role
+     FROM audit_logs a
+     LEFT JOIN users u ON u.id = a.user_id
+     ORDER BY a.created_at DESC
+     LIMIT 50`
+  );
+  res.json({ logs: result.rows });
 });
 
 app.get(/.*/, (_req, res) => res.sendFile(path.join(__dirname, "../public/index.html")));
