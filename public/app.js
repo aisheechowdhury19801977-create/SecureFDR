@@ -186,6 +186,7 @@ function openDecisionModal(fdr, status) {
   $('decisionNote').placeholder = status === 'VERIFIED' ? 'Optional verification note' : 'Required rejection reason';
   $('decisionConfirm').textContent = status === 'VERIFIED' ? 'Confirm verification' : 'Confirm rejection';
   $('decisionConfirm').className = `primary ${status === 'REJECTED' ? 'danger-primary' : ''}`;
+  $('decisionMessage').textContent = '';
   $('decisionModal').classList.remove('hidden');
 }
 
@@ -205,7 +206,6 @@ async function updateFdrStatus(status, note = '') {
       body: JSON.stringify({ status, note })
     });
     closeDecisionModal();
-    closeReviewModal();
     await loadOfficerQueue();
     await loadFdrs();
     await loadAudit();
@@ -325,7 +325,8 @@ $('reviewVerifyBtn').addEventListener('click', () => {
 $('reviewRejectBtn').addEventListener('click', () => {
   if (state.selectedFdr) openDecisionModal(state.selectedFdr, 'REJECTED');
 });
-$('decisionCancel').addEventListener('click', closeDecisionModal);
+$('decisionCloseBtn').addEventListener('click', closeDecisionModal);
+$('decisionCancelBtn').addEventListener('click', closeDecisionModal);
 $('reviewModal').addEventListener('click', (event) => { if (event.target === $('reviewModal')) closeReviewModal(); });
 $('decisionModal').addEventListener('click', (event) => { if (event.target === $('decisionModal')) closeDecisionModal(); });
 document.addEventListener('keydown', (event) => {
