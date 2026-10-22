@@ -22,7 +22,9 @@ function showApp() {
   $('userBadge').textContent = `${state.user.name} • ${state.user.role}`;
   $('welcome').textContent = `Welcome, ${state.user.name}`;
   $('institutionPanel').classList.toggle('hidden', state.user.role !== 'INSTITUTION');
+  $('reviewPanel').classList.toggle('hidden', !['OFFICER', 'ADMIN'].includes(state.user.role));
   loadFdrs();
+  if (['OFFICER', 'ADMIN'].includes(state.user.role)) loadReviewQueue();
 }
 
 function showAuth() {
@@ -54,31 +56,57 @@ async function loadFdrs() {
     if (fdr.status === 'VERIFIED') counts.verified++;
     if (['SUBMITTED', 'UNDER_REVIEW'].includes(fdr.status)) counts.review++;
     if (fdr.status === 'EXPIRED') counts.expired++;
-
     const tr = document.createElement('tr');
-    const action = state.user.role === 'OFFICER' || state.user.role === 'ADMIN'
-      ? `<button class="action-btn" data-id="${fdr.id}">Verify</button>` : '—';
     const verification = fdr.verification_score >= 75 ? `✓ ${fdr.verification_score}%` : `⚠ ${fdr.verification_score}%`;
     tr.innerHTML = `<td><strong>${escapeHtml(fdr.fdr_number)}</strong></td>
+      <td>${escapeHtml(fdr.institution_name || '—')}</td>
       <td>${escapeHtml(fdr.bank_name)}</td>
       <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
       <td>${fdr.expiry_date}</td>
       <td>${verification}</td>
-      <td><span class="pill ${fdr.status.toLowerCase()}">${fdr.status.replaceAll('_',' ')}</span></td>
-      <td>${action}</td>`;
+      <td><span class="pill ${fdr.status.toLowerCase()}">${fdr.status.replaceAll('_',' ')}</span></td>`;
     rows.appendChild(tr);
   }
 
   $('stats').innerHTML = [
     ['Total FDRs', counts.total], ['Verified', counts.verified], ['Pending review', counts.review], ['Expired', counts.expired]
   ].map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
+}
 
-  document.querySelectorAll('.action-btn').forEach(btn => btn.addEventListener('click', async () => {
-    try {
-      await api(`/api/fdr/${btn.dataset.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'VERIFIED' }) });
-      loadFdrs();
-    } catch (error) { alert(error.message); }
+async function loadReviewQueue() {
+  if (!['OFFICER', 'ADMIN'].includes(state.user?.role)) return;
+  const data = await api('/api/review/queue');
+  const rows = $('queueRows');
+  rows.innerHTML = '';
+  $('queueEmpty').classList.toggle('hidden', data.queue.length > 0);
+
+  for (const fdr of data.queue) {
+    const issues = [];
+    if (Number(fdr.verification_score) < 75) issues.push('Low confidence');
+    if (fdr.verification_status === 'NEEDS_REVIEW') issues.push('Manual review');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(fdr.institution_name)}<br><small>${escapeHtml(fdr.institution_email)}</small></td>
+      <td><strong>${escapeHtml(fdr.fdr_number)}</strong></td>
+      <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
+      <td>${Number(fdr.verification_score)}%<br><small>${issues.join(' • ') || 'Automated checks passed'}</small></td>
+      <td>${fdr.expiry_date}</td>
+      <td><button class="action-btn verify-action" data-id="${fdr.id}">Approve</button> <button class="action-btn reject-action" data-id="${fdr.id}">Reject</button></td>`;
+    rows.appendChild(tr);
+  }
+
+  document.querySelectorAll('.verify-action').forEach(btn => btn.addEventListener('click', () => updateStatus(btn.dataset.id, 'VERIFIED')));
+  document.querySelectorAll('.reject-action').forEach(btn => btn.addEventListener('click', () => {
+    const reason = window.prompt('Reason for rejection:');
+    if (reason && reason.trim()) updateStatus(btn.dataset.id, 'REJECTED', reason.trim());
   }));
+}
+
+async function updateStatus(id, status, reason = null) {
+  try {
+    await api(`/api/fdr/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) });
+    await loadFdrs();
+    await loadReviewQueue();
+  } catch (error) { alert(error.message); }
 }
 
 function escapeHtml(value) {
@@ -107,11 +135,7 @@ $('loginForm').addEventListener('submit', async (event) => {
 $('registerForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
-    await api('/api/auth/register', { method: 'POST', body: JSON.stringify({
-      name: $('registerName').value,
-      email: $('registerEmail').value,
-      password: $('registerPassword').value
-    }) });
+    await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ name: $('registerName').value, email: $('registerEmail').value, password: $('registerPassword').value }) });
     setMessage('authMessage', 'Institution account created. You can now log in.', true);
     document.querySelector('[data-tab="login"]').click();
   } catch (error) { setMessage('authMessage', error.message); }
@@ -168,6 +192,7 @@ $('fdrForm').addEventListener('submit', async (event) => {
 });
 
 $('refreshBtn').addEventListener('click', loadFdrs);
+$('refreshQueueBtn').addEventListener('click', loadReviewQueue);
 $('logoutBtn').addEventListener('click', () => {
   state.token = null; state.user = null; state.verification = null;
   localStorage.removeItem('securefdr_token');
