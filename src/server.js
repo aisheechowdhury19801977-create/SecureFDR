@@ -41,11 +41,13 @@ function requireRole(...roles) {
 }
 
 app.get("/health", async (_req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: "DATABASE_URL is not configured" });
   try {
     await pool.query("SELECT 1");
     res.json({ ok: true, service: "SecureFDR" });
-  } catch {
-    res.status(503).json({ ok: false });
+  } catch (error) {
+    console.error("Database health check failed:", error);
+    res.status(503).json({ ok: false, error: "Database connection failed" });
   }
 });
 
@@ -53,6 +55,8 @@ app.post("/api/auth/register", async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: "name, email and password are required" });
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: "Database is not configured on the server" });
+  if (!process.env.JWT_SECRET) return res.status(503).json({ error: "JWT_SECRET is not configured on the server" });
 
   const passwordHash = await bcrypt.hash(password, 12);
   try {
@@ -65,7 +69,8 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(201).json({ user: result.rows[0] });
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "Email already registered" });
-    console.error(error);
+    console.error("Registration database error:", error);
+    if (error.code === "42P01") return res.status(503).json({ error: "Database schema is not initialized. Run src/schema.sql." });
     res.status(500).json({ error: "Unable to create account" });
   }
 });
@@ -73,22 +78,30 @@ app.post("/api/auth/register", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: "Database is not configured on the server" });
+  if (!process.env.JWT_SECRET) return res.status(503).json({ error: "JWT_SECRET is not configured on the server" });
 
-  const result = await pool.query(
-    "SELECT id, name, email, role, password_hash FROM users WHERE email = LOWER($1)",
-    [email.trim()]
-  );
-  const user = result.rows[0];
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "Invalid email or password" });
+  try {
+    const result = await pool.query(
+      "SELECT id, name, email, role, password_hash FROM users WHERE email = LOWER($1)",
+      [email.trim()]
+    );
+    const user = result.rows[0];
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "Invalid email or password" });
 
-  const token = signToken(user);
-  delete user.password_hash;
-  await pool.query(
-    `INSERT INTO audit_logs (user_id, action, entity_type, details)
-     VALUES ($1, 'LOGIN', 'USER', $2)`,
-    [user.id, JSON.stringify({ role: user.role })]
-  );
-  res.json({ accessToken: token, tokenType: "Bearer", user });
+    const token = signToken(user);
+    delete user.password_hash;
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, details)
+       VALUES ($1, 'LOGIN', 'USER', $2)`,
+      [user.id, JSON.stringify({ role: user.role })]
+    );
+    res.json({ accessToken: token, tokenType: "Bearer", user });
+  } catch (error) {
+    console.error("Login database error:", error);
+    if (error.code === "42P01") return res.status(503).json({ error: "Database schema is not initialized. Run src/schema.sql." });
+    res.status(500).json({ error: "Unable to sign in" });
+  }
 });
 
 app.get("/api/me", authenticate, async (req, res) => {
