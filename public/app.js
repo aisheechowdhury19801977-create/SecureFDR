@@ -56,27 +56,18 @@ async function loadFdrs() {
     if (fdr.status === 'EXPIRED') counts.expired++;
 
     const tr = document.createElement('tr');
-    const action = state.user.role === 'OFFICER' || state.user.role === 'ADMIN'
-      ? `<button class="action-btn" data-id="${fdr.id}">Verify</button>` : '—';
     tr.innerHTML = `<td><strong>${escapeHtml(fdr.fdr_number)}</strong></td>
       <td>${escapeHtml(fdr.bank_name)}</td>
       <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
       <td>${fdr.expiry_date}</td>
       <td><span class="pill ${fdr.status.toLowerCase()}">${fdr.status.replaceAll('_',' ')}</span></td>
-      <td>${action}</td>`;
+      <td>—</td>`;
     rows.appendChild(tr);
   }
 
   $('stats').innerHTML = [
     ['Total FDRs', counts.total], ['Verified', counts.verified], ['Pending review', counts.review], ['Expired', counts.expired]
   ].map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
-
-  document.querySelectorAll('.action-btn').forEach(btn => btn.addEventListener('click', async () => {
-    try {
-      await api(`/api/fdr/${btn.dataset.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'VERIFIED' }) });
-      loadFdrs();
-    } catch (error) { alert(error.message); }
-  }));
 }
 
 function escapeHtml(value) {
@@ -108,8 +99,7 @@ $('registerForm').addEventListener('submit', async (event) => {
     await api('/api/auth/register', { method: 'POST', body: JSON.stringify({
       name: $('registerName').value,
       email: $('registerEmail').value,
-      password: $('registerPassword').value,
-      role: $('registerRole').value
+      password: $('registerPassword').value
     }) });
     setMessage('authMessage', 'Account created. You can now log in.', true);
     document.querySelector('[data-tab="login"]').click();
