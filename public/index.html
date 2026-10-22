@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SecureFDR | AICTE</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">S</span><div><strong>SecureFDR</strong><small>AICTE Security Deposit & FDR Portal</small></div></div>
+    <div id="userBadge" class="user-badge">Not signed in</div>
+  </header>
+
+  <main class="container">
+    <section id="authView" class="auth-grid">
+      <div class="hero-card">
+        <p class="eyebrow">SIH26265 • Smart Automation</p>
+        <h1>Secure the complete FDR lifecycle.</h1>
+        <p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p>
+        <div class="feature-row"><span>🔐 Secure login</span><span>📄 FDR workflow</span><span>📊 Live dashboard</span></div>
+      </div>
+      <div class="card auth-card">
+        <div class="tabs"><button class="tab active" data-tab="login">Login</button><button class="tab" data-tab="register">Register</button></div>
+        <form id="loginForm" class="form">
+          <label>Email<input id="loginEmail" type="email" required placeholder="institution@example.com"></label>
+          <label>Password<input id="loginPassword" type="password" required placeholder="••••••••"></label>
+          <button class="primary" type="submit">Sign in</button>
+        </form>
+        <form id="registerForm" class="form hidden">
+          <label>Name<input id="registerName" required placeholder="Institution / Officer name"></label>
+          <label>Email<input id="registerEmail" type="email" required placeholder="name@example.com"></label>
+          <label>Password<input id="registerPassword" type="password" minlength="8" required placeholder="Minimum 8 characters"></label>
+          <label>Role<select id="registerRole"><option value="INSTITUTION">Institution</option><option value="OFFICER">Officer</option><option value="ADMIN">Admin</option></select></label>
+          <button class="primary" type="submit">Create account</button>
+        </form>
+        <p id="authMessage" class="message"></p>
+      </div>
+    </section>
+
+    <section id="appView" class="hidden">
+      <div class="page-head"><div><p class="eyebrow">SecureFDR workspace</p><h2 id="welcome">Dashboard</h2></div><button id="logoutBtn" class="ghost">Log out</button></div>
+      <div id="stats" class="stats"></div>
+
+      <div id="institutionPanel" class="card panel">
+        <div class="panel-head"><div><h3>Submit a security deposit / FDR</h3><p>Create a record for officer verification.</p></div></div>
+        <form id="fdrForm" class="form form-grid">
+          <label>FDR number<input id="fdrNumber" required placeholder="FDR-2026-0001"></label>
+          <label>Bank name<input id="bankName" required placeholder="Bank / financial institution"></label>
+          <label>Amount (₹)<input id="amount" type="number" min="1" step="0.01" required placeholder="100000"></label>
+          <label>Issue date<input id="issueDate" type="date" required></label>
+          <label>Expiry date<input id="expiryDate" type="date" required></label>
+          <label>Document name<input id="documentName" placeholder="FDR_certificate.pdf"></label>
+          <div class="form-actions"><button class="primary" type="submit">Submit FDR</button><span id="fdrMessage" class="message"></span></div>
+        </form>
+      </div>
+
+      <div class="card panel">
+        <div class="panel-head"><div><h3>FDR records</h3><p>Status updates and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div>
+        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Action</th></tr></thead><tbody id="fdrRows"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
