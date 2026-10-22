@@ -14,14 +14,19 @@
   function installUploadField() {
     const form = document.getElementById('fdrForm');
     const documentName = document.getElementById('documentName');
-    if (!form || !documentName || documentName.dataset.uploadReady) return;
+    if (!form || !documentName) return;
 
-    documentName.dataset.uploadReady = 'true';
-    const wrapper = document.createElement('label');
-    wrapper.innerHTML = 'Upload FDR certificate <input id="documentFile" type="file" accept=".pdf,.jpg,.jpeg,.png"><small>PDF, JPG or PNG • maximum 600 KB</small>';
-    documentName.parentElement.insertAdjacentElement('afterend', wrapper);
+    let fileInput = document.getElementById('documentFile');
+    if (!fileInput) {
+      const wrapper = document.createElement('label');
+      wrapper.className = 'upload-field';
+      wrapper.innerHTML = 'Upload FDR certificate <input id="documentFile" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"><small>PDF, JPG or PNG • maximum 600 KB</small>';
+      documentName.parentElement.insertAdjacentElement('afterend', wrapper);
+      fileInput = wrapper.querySelector('#documentFile');
+    }
 
-    const fileInput = wrapper.querySelector('#documentFile');
+    if (fileInput.dataset.uploadReady) return;
+    fileInput.dataset.uploadReady = 'true';
     fileInput.addEventListener('change', () => {
       const file = fileInput.files[0];
       if (!file) return;
