@@ -1,13 +1,27 @@
 require("dotenv").config();
 const path = require("path");
+const fs = require("fs");
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const pdfParse = require("pdf-parse");
 const { Pool } = require("pg");
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const uploadDir = path.join(__dirname, "../uploads");
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const upload = multer({
+  dest: uploadDir,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype !== "application/pdf") return cb(new Error("Only PDF FDR documents are allowed"));
+    cb(null, true);
+  }
+});
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -37,6 +51,53 @@ function requireRole(...roles) {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) return res.status(403).json({ error: "Insufficient permissions" });
     next();
+  };
+}
+
+function normalizeDate(value) {
+  if (!value) return null;
+  const match = value.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if (!match) return null;
+  const [, d, m, y] = match;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
+function extractFdrFields(text) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  const fdrMatch = clean.match(/(?:FDR|FD|DEPOSIT)[\s:#\/-]*([A-Z0-9][A-Z0-9\/-]{3,})/i);
+  const amountMatch = clean.match(/(?:amount|principal|value|deposit)\s*(?:amount)?\s*[:=-]?\s*(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  const bankMatch = clean.match(/(?:bank(?: name)?|banking institution)\s*[:=-]\s*([A-Za-z][A-Za-z &.\-]{2,70})/i);
+  const dateMatches = [...clean.matchAll(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{4}\b/g)].map(m => m[0]);
+
+  const issueDate = normalizeDate(dateMatches[0]);
+  const expiryDate = normalizeDate(dateMatches[1]);
+  const amount = amountMatch ? Number(amountMatch[1].replace(/,/g, "")) : null;
+  const fdrNumber = fdrMatch ? fdrMatch[1].replace(/\s/g, "") : null;
+  const bankName = bankMatch ? bankMatch[1].trim().replace(/[.,;]$/, "") : null;
+
+  let score = 0;
+  if (fdrNumber) score += 30;
+  if (bankName) score += 25;
+  if (amount) score += 20;
+  if (issueDate) score += 12.5;
+  if (expiryDate) score += 12.5;
+
+  const issues = [];
+  if (!fdrNumber) issues.push("FDR number could not be confidently extracted");
+  if (!bankName) issues.push("Bank name could not be confidently extracted");
+  if (!amount) issues.push("Deposit amount could not be confidently extracted");
+  if (!issueDate || !expiryDate) issues.push("Issue/expiry dates could not both be extracted");
+  if (issueDate && expiryDate && new Date(expiryDate) <= new Date(issueDate)) issues.push("Expiry date is not after issue date");
+
+  return {
+    fdrNumber,
+    bankName,
+    amount,
+    issueDate,
+    expiryDate,
+    confidence: Math.round(score),
+    passed: score >= 75 && issues.length === 0,
+    issues
   };
 }
 
@@ -97,8 +158,38 @@ app.get("/api/me", authenticate, async (req, res) => {
   res.json({ user: result.rows[0] });
 });
 
+app.post("/api/fdr/verify-document", authenticate, requireRole("INSTITUTION"), upload.single("document"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "Upload an FDR PDF" });
+
+  try {
+    const buffer = fs.readFileSync(req.file.path);
+    const parsed = await pdfParse(buffer);
+    const extraction = extractFdrFields(parsed.text || "");
+    const documentPath = `/uploads/${path.basename(req.file.path)}`;
+
+    await pool.query(
+      `INSERT INTO document_verifications
+       (user_id, original_filename, stored_path, extracted_data, confidence, passed)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [req.user.sub, req.file.originalname, documentPath, JSON.stringify(extraction), extraction.confidence, extraction.passed]
+    );
+
+    res.json({
+      message: extraction.passed ? "Document passed the initial automated checks" : "Document needs review or correction",
+      documentPath,
+      extraction
+    });
+  } catch (error) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    console.error(error);
+    res.status(422).json({ error: "Unable to read or verify this PDF" });
+  }
+});
+
+app.use("/uploads", express.static(uploadDir, { index: false }));
+
 app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) => {
-  const { fdrNumber, bankName, amount, issueDate, expiryDate, documentName, documentUrl } = req.body;
+  const { fdrNumber, bankName, amount, issueDate, expiryDate, documentName, documentUrl, verification } = req.body;
   if (!fdrNumber || !bankName || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !issueDate || !expiryDate) {
     return res.status(400).json({ error: "Valid FDR number, bank, amount and dates are required" });
   }
@@ -106,14 +197,14 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
 
   const result = await pool.query(
     `INSERT INTO fdr_records
-      (institution_id, fdr_number, bank_name, amount, issue_date, expiry_date, document_name, document_url)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [req.user.sub, fdrNumber.trim(), bankName.trim(), amount, issueDate, expiryDate, documentName || null, documentUrl || null]
+      (institution_id, fdr_number, bank_name, amount, issue_date, expiry_date, document_name, document_url, verification_status, verification_score)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [req.user.sub, fdrNumber.trim(), bankName.trim(), amount, issueDate, expiryDate, documentName || null, documentUrl || null, verification?.passed ? "AUTO_PASSED" : "NEEDS_REVIEW", verification?.confidence || 0]
   );
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
      VALUES ($1,'CREATE','FDR',$2,$3)`,
-    [req.user.sub, result.rows[0].id, JSON.stringify({ fdrNumber })]
+    [req.user.sub, result.rows[0].id, JSON.stringify({ fdrNumber, verification })]
   );
   res.status(201).json({ fdr: result.rows[0] });
 });
