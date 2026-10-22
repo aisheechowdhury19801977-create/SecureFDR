@@ -71,6 +71,49 @@
       </div>
     </section>
   </main>
+
+  <div id="reviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="modal-card wide-modal">
+      <div class="modal-head">
+        <div><p class="eyebrow">Officer verification</p><h3 id="reviewTitle">Review FDR</h3></div>
+        <button id="reviewCloseBtn" class="icon-btn" aria-label="Close">×</button>
+      </div>
+      <div class="review-banner"><span>FDR number</span><strong id="reviewFdrNumber">—</strong><span id="reviewStatus"></span></div>
+      <div class="detail-grid">
+        <div><span>Institution</span><strong id="reviewInstitution">—</strong></div>
+        <div><span>Institution email</span><strong id="reviewEmail">—</strong></div>
+        <div><span>Bank</span><strong id="reviewBank">—</strong></div>
+        <div><span>Amount</span><strong id="reviewAmount">—</strong></div>
+        <div><span>Issue date</span><strong id="reviewIssueDate">—</strong></div>
+        <div><span>Expiry date</span><strong id="reviewExpiryDate">—</strong></div>
+        <div><span>Submitted</span><strong id="reviewCreated">—</strong></div>
+      </div>
+      <div class="document-box"><span>Supporting document</span><div id="reviewDocument"></div></div>
+      <div class="modal-actions">
+        <button id="reviewMarkBtn" class="ghost">Mark under review</button>
+        <div class="spacer"></div>
+        <button id="reviewRejectBtn" class="action-btn danger">Reject</button>
+        <button id="reviewVerifyBtn" class="primary">Verify FDR</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="decisionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="decisionTitle">
+    <div class="modal-card decision-modal">
+      <div class="modal-head">
+        <div><p class="eyebrow">Verification decision</p><h3 id="decisionTitle">Verify FDR</h3></div>
+        <button id="decisionCancel" class="icon-btn" aria-label="Close">×</button>
+      </div>
+      <p id="decisionSubtitle" class="modal-copy"></p>
+      <div class="decision-record"><span>FDR</span><strong id="decisionFdr">—</strong></div>
+      <form id="decisionForm" class="form">
+        <label>Officer note<textarea id="decisionNote" rows="4" maxlength="1000" placeholder="Optional verification note"></textarea></label>
+        <p id="decisionMessage" class="message"></p>
+        <div class="modal-actions"><button id="decisionCancel" type="button" class="ghost">Cancel</button><div class="spacer"></div><button id="decisionConfirm" class="primary" type="submit">Confirm verification</button></div>
+      </form>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
 </body>
 </html>
