@@ -1,4 +1,5 @@
 require("dotenv").config();
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
@@ -10,6 +11,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use(express.static(path.join(__dirname, "../public")));
 
 function signToken(user) {
   return jwt.sign(
@@ -47,37 +49,33 @@ function requireRole(...roles) {
 app.get("/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ ok: true });
+    res.json({ ok: true, service: "SecureFDR" });
   } catch {
     res.status(503).json({ ok: false });
   }
 });
 
 app.post("/api/auth/register", async (req, res) => {
-  const { name, email, password, role = "INSTITUTION" } = req.body;
+  const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: "name, email and password are required" });
   }
-
   if (password.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters" });
   }
 
-  if (!["INSTITUTION", "OFFICER", "ADMIN"].includes(role)) {
-    return res.status(400).json({ error: "Invalid role" });
-  }
-
+  // Public registration creates institution accounts only.
+  // Officer/admin accounts should be provisioned by an administrator.
   const passwordHash = await bcrypt.hash(password, 12);
 
   try {
     const result = await pool.query(
       `INSERT INTO users (name, email, password_hash, role)
-       VALUES ($1, LOWER($2), $3, $4)
+       VALUES ($1, LOWER($2), $3, 'INSTITUTION')
        RETURNING id, name, email, role`,
-      [name, email, passwordHash, role]
+      [name, email, passwordHash]
     );
-
     res.status(201).json({ user: result.rows[0] });
   } catch (error) {
     if (error.code === "23505") {
@@ -90,7 +88,6 @@ app.post("/api/auth/register", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password are required" });
   }
@@ -99,8 +96,8 @@ app.post("/api/auth/login", async (req, res) => {
     "SELECT id, name, email, role, password_hash FROM users WHERE email = LOWER($1)",
     [email]
   );
-
   const user = result.rows[0];
+
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
@@ -110,8 +107,8 @@ app.post("/api/auth/login", async (req, res) => {
 
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, details)
-     VALUES ($1, $2, $3, $4)`,
-    [user.id, "LOGIN", "USER", JSON.stringify({ role: user.role })]
+     VALUES ($1, 'LOGIN', 'USER', $2)`,
+    [user.id, JSON.stringify({ role: user.role })]
   );
 
   res.json({ accessToken: token, tokenType: "Bearer", user });
@@ -122,7 +119,6 @@ app.get("/api/me", authenticate, async (req, res) => {
     "SELECT id, name, email, role FROM users WHERE id = $1",
     [req.user.sub]
   );
-
   if (!result.rows[0]) return res.status(401).json({ error: "User not found" });
   res.json({ user: result.rows[0] });
 });
@@ -130,8 +126,11 @@ app.get("/api/me", authenticate, async (req, res) => {
 app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) => {
   const { fdrNumber, bankName, amount, issueDate, expiryDate, documentName, documentUrl } = req.body;
 
-  if (!fdrNumber || !bankName || !amount || !issueDate || !expiryDate) {
-    return res.status(400).json({ error: "Required FDR fields are missing" });
+  if (!fdrNumber || !bankName || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !issueDate || !expiryDate) {
+    return res.status(400).json({ error: "Valid FDR number, bank, amount and dates are required" });
+  }
+  if (new Date(expiryDate) <= new Date(issueDate)) {
+    return res.status(400).json({ error: "Expiry date must be after issue date" });
   }
 
   const result = await pool.query(
@@ -139,13 +138,13 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
       (institution_id, fdr_number, bank_name, amount, issue_date, expiry_date, document_name, document_url)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      RETURNING *`,
-    [req.user.sub, fdrNumber, bankName, amount, issueDate, expiryDate, documentName || null, documentUrl || null]
+    [req.user.sub, fdrNumber.trim(), bankName.trim(), amount, issueDate, expiryDate, documentName || null, documentUrl || null]
   );
 
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [req.user.sub, "CREATE", "FDR", result.rows[0].id, JSON.stringify({ fdrNumber })]
+     VALUES ($1,'CREATE','FDR',$2,$3)`,
+    [req.user.sub, result.rows[0].id, JSON.stringify({ fdrNumber })]
   );
 
   res.status(201).json({ fdr: result.rows[0] });
@@ -154,12 +153,10 @@ app.post("/api/fdr", authenticate, requireRole("INSTITUTION"), async (req, res) 
 app.get("/api/fdr", authenticate, async (req, res) => {
   const params = [];
   let query = `SELECT * FROM fdr_records`;
-
   if (req.user.role === "INSTITUTION") {
     params.push(req.user.sub);
     query += " WHERE institution_id = $1";
   }
-
   query += " ORDER BY created_at DESC";
   const result = await pool.query(query, params);
   res.json({ fdrs: result.rows });
@@ -168,26 +165,24 @@ app.get("/api/fdr", authenticate, async (req, res) => {
 app.patch("/api/fdr/:id/status", authenticate, requireRole("OFFICER", "ADMIN"), async (req, res) => {
   const { status } = req.body;
   const allowed = ["UNDER_REVIEW", "VERIFIED", "REJECTED", "EXPIRING", "EXPIRED"];
-
-  if (!allowed.includes(status)) {
-    return res.status(400).json({ error: "Invalid FDR status" });
-  }
+  if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid FDR status" });
 
   const result = await pool.query(
     "UPDATE fdr_records SET status = $1 WHERE id = $2 RETURNING *",
     [status, req.params.id]
   );
-
   if (!result.rows[0]) return res.status(404).json({ error: "FDR not found" });
 
   await pool.query(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [req.user.sub, "STATUS_CHANGE", "FDR", req.params.id, JSON.stringify({ status })]
+     VALUES ($1,'STATUS_CHANGE','FDR',$2,$3)`,
+    [req.user.sub, req.params.id, JSON.stringify({ status })]
   );
 
   res.json({ fdr: result.rows[0] });
 });
+
+app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "../public/index.html")));
 
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => console.log(`SecureFDR API listening on ${port}`));
