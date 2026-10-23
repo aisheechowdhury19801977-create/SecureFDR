@@ -85,11 +85,11 @@
       label.style.pointerEvents = 'none';
 
       try {
-        const documentUrl = await readAsDataUrl(file);
+        const documentData = await readAsDataUrl(file);
         const response = await fetch(`/api/fdr/${encodeURIComponent(fdr.id)}/document`, {
           method: 'PATCH',
           headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ documentName: file.name, documentUrl })
+          body: JSON.stringify({ documentName: file.name, documentUrl: documentData })
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Unable to upload certificate');
@@ -116,11 +116,8 @@
     view.className = 'action-btn';
     view.textContent = 'View';
     view.addEventListener('click', async () => {
-      try {
-        await openStoredDocument(fdr);
-      } catch (error) {
-        alert(error.message || 'Unable to open certificate');
-      }
+      try { await openStoredDocument(fdr); }
+      catch (error) { alert(error.message || 'Unable to open certificate'); }
     });
 
     const download = document.createElement('button');
@@ -128,11 +125,8 @@
     download.className = 'action-btn success';
     download.textContent = 'Download';
     download.addEventListener('click', async () => {
-      try {
-        await downloadStoredDocument(fdr);
-      } catch (error) {
-        alert(error.message || 'Unable to download certificate');
-      }
+      try { await downloadStoredDocument(fdr); }
+      catch (error) { alert(error.message || 'Unable to download certificate'); }
     });
 
     actions.append(view, download);
@@ -167,10 +161,10 @@
         head.appendChild(th);
       }
 
-      const byNumber = new Map(data.fdrs.map(fdr => [fdr.fdr_number, fdr]));
+      const byId = new Map(data.fdrs.map(fdr => [String(fdr.id), fdr]));
       rows.forEach(row => {
-        const number = row.cells[0]?.textContent.trim();
-        const fdr = byNumber.get(number);
+        const id = row.dataset.fdrId;
+        const fdr = id ? byId.get(String(id)) : null;
         if (!fdr) return;
 
         let cell = row.querySelector('[data-document-cell]');
@@ -180,14 +174,9 @@
           row.appendChild(cell);
         }
 
-        if (fdr.document_url) {
-          addDocumentActions(cell, fdr);
-        } else if (canUpload) {
-          createUploadControl(fdr, cell, enhanceRecordTable);
-        } else {
-          cell.textContent = 'No certificate';
-          cell.className = 'muted-text';
-        }
+        if (fdr.document_url) addDocumentActions(cell, fdr);
+        else if (canUpload) createUploadControl(fdr, cell, enhanceRecordTable);
+        else { cell.textContent = 'No certificate'; cell.className = 'muted-text'; }
       });
     } catch (error) {
       console.warn('Certificate actions unavailable:', error);
