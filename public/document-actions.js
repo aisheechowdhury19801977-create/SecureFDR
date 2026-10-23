@@ -11,6 +11,11 @@
     });
   }
 
+  function authHeaders() {
+    const token = localStorage.getItem('securefdr_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   function createUploadControl(fdr, cell, refresh) {
     if (cell.querySelector('[data-upload-document]')) return;
 
@@ -42,25 +47,23 @@
         return;
       }
 
+      const originalText = label.textContent;
       label.textContent = 'Uploading…';
       label.style.pointerEvents = 'none';
+
       try {
         const documentUrl = await readAsDataUrl(file);
-        const token = localStorage.getItem('securefdr_token');
         const response = await fetch(`/api/fdr/${encodeURIComponent(fdr.id)}/document`, {
           method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ documentName: file.name, documentUrl })
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'Unable to attach certificate');
+        if (!response.ok) throw new Error(data.error || 'Unable to upload certificate');
         await refresh();
       } catch (error) {
-        alert(error.message || 'Unable to attach certificate.');
-        label.textContent = 'Upload certificate';
+        alert(error.message || 'Unable to upload certificate.');
+        label.textContent = originalText;
         label.style.pointerEvents = '';
       }
     });
@@ -70,58 +73,26 @@
     cell.appendChild(wrapper);
   }
 
-  function enhanceReviewDocument() {
-    const box = document.getElementById('reviewDocument');
-    if (!box) return;
-
-    const link = box.querySelector('a.document-link');
-    if (!link || link.dataset.actionsEnhanced === 'true') return;
-
-    link.dataset.actionsEnhanced = 'true';
-    const url = link.getAttribute('href');
-    const fileName = link.textContent.replace(/^📄\s*Open\s*/i, '').trim() || 'FDR_document';
-
+  function addDocumentActions(cell, fdr) {
+    cell.innerHTML = '';
     const actions = document.createElement('div');
     actions.className = 'document-actions';
 
     const view = document.createElement('a');
     view.className = 'action-btn';
-    view.href = url;
+    view.href = fdr.document_url;
     view.target = '_blank';
     view.rel = 'noopener';
-    view.textContent = 'View certificate';
+    view.textContent = 'View';
 
-    const download = document.createElement('button');
-    download.type = 'button';
+    const download = document.createElement('a');
     download.className = 'action-btn success';
-    download.textContent = 'Download certificate';
-    download.addEventListener('click', async () => {
-      download.disabled = true;
-      const oldText = download.textContent;
-      download.textContent = 'Preparing…';
-      try {
-        const blob = await fetch(url).then(response => {
-          if (!response.ok) throw new Error('Download failed');
-          return response.blob();
-        });
-        const objectUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = fileName;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-      } catch {
-        alert('Unable to download the certificate.');
-      } finally {
-        download.disabled = false;
-        download.textContent = oldText;
-      }
-    });
+    download.href = fdr.document_url;
+    download.download = fdr.document_name || 'FDR_certificate';
+    download.textContent = 'Download';
 
-    link.replaceWith(actions);
     actions.append(view, download);
+    cell.appendChild(actions);
   }
 
   async function enhanceRecordTable() {
@@ -131,8 +102,8 @@
 
     try {
       const [fdrResponse, meResponse] = await Promise.all([
-        fetch('/api/fdr', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/me', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/fdr', { headers: authHeaders() }),
+        fetch('/api/me', { headers: authHeaders() })
       ]);
       if (!fdrResponse.ok || !meResponse.ok) return;
 
@@ -166,53 +137,8 @@
         }
 
         if (fdr.document_url) {
-          if (cell.dataset.ready === 'true') return;
-          cell.dataset.ready = 'true';
-
-          const fileName = fdr.document_name || 'FDR_certificate';
-          const actions = document.createElement('div');
-          actions.className = 'document-actions';
-
-          const view = document.createElement('a');
-          view.className = 'action-btn';
-          view.href = fdr.document_url;
-          view.target = '_blank';
-          view.rel = 'noopener';
-          view.textContent = 'View';
-
-          const download = document.createElement('button');
-          download.type = 'button';
-          download.className = 'action-btn success';
-          download.textContent = 'Download';
-          download.addEventListener('click', async () => {
-            download.disabled = true;
-            const oldText = download.textContent;
-            download.textContent = 'Preparing…';
-            try {
-              const blob = await fetch(fdr.document_url).then(r => {
-                if (!r.ok) throw new Error('Download failed');
-                return r.blob();
-              });
-              const objectUrl = URL.createObjectURL(blob);
-              const anchor = document.createElement('a');
-              anchor.href = objectUrl;
-              anchor.download = fileName;
-              document.body.appendChild(anchor);
-              anchor.click();
-              anchor.remove();
-              setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-            } catch {
-              alert('Unable to download the certificate.');
-            } finally {
-              download.disabled = false;
-              download.textContent = oldText;
-            }
-          });
-
-          actions.append(view, download);
-          cell.appendChild(actions);
+          addDocumentActions(cell, fdr);
         } else if (canUpload) {
-          cell.innerHTML = '';
           createUploadControl(fdr, cell, enhanceRecordTable);
         } else {
           cell.textContent = 'No certificate';
@@ -225,12 +151,6 @@
   }
 
   function start() {
-    const reviewBox = document.getElementById('reviewDocument');
-    if (reviewBox) {
-      const observer = new MutationObserver(enhanceReviewDocument);
-      observer.observe(reviewBox, { childList: true, subtree: true });
-      enhanceReviewDocument();
-    }
     enhanceRecordTable();
     setInterval(enhanceRecordTable, 2000);
   }
