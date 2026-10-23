@@ -80,7 +80,7 @@
         return;
       }
 
-      const originalText = label.textContent;
+      const originalText = 'Upload certificate';
       label.textContent = 'Uploading…';
       label.style.pointerEvents = 'none';
 
@@ -133,6 +133,22 @@
     cell.appendChild(actions);
   }
 
+  function cleanupDuplicateCertificateColumns(table) {
+    const headers = Array.from(table.querySelectorAll('thead th'));
+    const certificateHeaders = headers.filter(th =>
+      th.dataset.documentHeader === 'true' || th.textContent.trim().toLowerCase() === 'certificate'
+    );
+
+    if (certificateHeaders.length > 1) {
+      certificateHeaders.slice(1).forEach(th => th.remove());
+    }
+
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const cells = Array.from(row.querySelectorAll('[data-document-cell]'));
+      if (cells.length > 1) cells.slice(1).forEach(cell => cell.remove());
+    });
+  }
+
   async function enhanceRecordTable() {
     const token = localStorage.getItem('securefdr_token');
     const panel = document.getElementById('recordsPanel');
@@ -152,13 +168,20 @@
       const table = panel.querySelector('table');
       const head = table?.querySelector('thead tr');
       const rows = table?.querySelectorAll('tbody tr');
-      if (!head || !rows) return;
+      if (!table || !head || !rows) return;
 
-      if (!head.querySelector('[data-document-header]')) {
-        const th = document.createElement('th');
-        th.textContent = 'Certificate';
-        th.dataset.documentHeader = 'true';
-        head.appendChild(th);
+      cleanupDuplicateCertificateColumns(table);
+
+      let certificateHeader = head.querySelector('[data-document-header]');
+      if (!certificateHeader) {
+        certificateHeader = Array.from(head.querySelectorAll('th')).find(th => th.textContent.trim().toLowerCase() === 'certificate');
+        if (certificateHeader) certificateHeader.dataset.documentHeader = 'true';
+      }
+      if (!certificateHeader) {
+        certificateHeader = document.createElement('th');
+        certificateHeader.textContent = 'Certificate';
+        certificateHeader.dataset.documentHeader = 'true';
+        head.appendChild(certificateHeader);
       }
 
       const byId = new Map(data.fdrs.map(fdr => [String(fdr.id), fdr]));
