@@ -1,86 +1,156 @@
 # SecureFDR
 
-## SIH26265 — Streamline of Security Deposit / FDR Portal
+## Security Deposit & FDR Management Portal
 
-SecureFDR is a software-first FDR lifecycle management portal for institutions and reviewing officers. This branch is the **SIH26265 MVP**.
+SecureFDR is a software-first portal for managing the lifecycle of security deposits and Fixed Deposit Receipts (FDRs) associated with approval and compliance workflows. It is designed for institutions and authorized reviewing officers.
 
-## What is implemented
+> **Prototype status:** SIH-ready demonstration build. Production deployment requires authorized financial/bank integrations, hardened infrastructure, and formal security/compliance approval.
 
-- Responsive web dashboard
-- Institution registration and login
+## Core workflow
+
+```text
+Institution submits FDR
+        ↓
+Document upload & validation
+        ↓
+Officer review
+        ↓
+Verification / rejection / correction
+        ↓
+Lifecycle monitoring
+        ↓
+90 / 30 / 7-day deadline alerts
+        ↓
+Renewal / replacement
+        ↓
+Release / refund request
+        ↓
+Officer decision
+        ↓
+Audit trail & reporting
+```
+
+## Implemented capabilities
+
+### Institution
+- Secure registration and login
+- FDR/security-deposit submission
+- Bank, amount, issue-date and maturity-date capture
+- Certificate upload
+- Authenticated document viewing/download
+- Renewal workflow
+- Replacement workflow
+- Release/refund request workflow
+- Visibility into verification and lifecycle status
+
+### Authorized officer
+- Verification queue
+- FDR review modal with institution and instrument details
+- Verify / reject / mark-under-review actions
+- Mandatory rejection reason
+- Verification note and verifier identity
+- Discrepancy detection and review
+- Duplicate FDR identification
+- Officer observation and resolution workflow
+- Renewal/replacement review
+- Release/refund review
+- Audit history
+
+### Compliance & lifecycle management
+- Institution-wise and instrument-wise records
+- Missing-document checks
+- Duplicate FDR detection
+- Maturity/expiry monitoring
+- 90-day, 30-day and 7-day attention thresholds
+- Expired-record identification
+- Renewal and replacement history
+- Release/refund lifecycle
+- Compliance dashboard and report export
+
+### Security controls in the MVP
 - bcrypt password hashing
 - Short-lived JWT access tokens
 - Bearer-token authentication middleware
-- Role-based authorization for Institution / Officer / Admin
-- FDR submission and validation
-- Officer/Admin status updates
-- Audit logging for login, creation and status changes
-- PostgreSQL schema and indexes
-- Expiry/status fields ready for alert automation
+- Server-side role checks for Institution / Officer / Admin
+- Parameterized PostgreSQL queries
+- Authenticated document delivery
+- Private/no-store document response headers
+- Audit logging for authentication, creation, document upload and status changes
+- File type and size validation
 
-## Request flow
+## Important verification boundary
 
-```text
-Browser
-  │
-  ├── POST /api/auth/register ──> bcrypt hash ──> PostgreSQL
-  │
-  ├── POST /api/auth/login ─────> bcrypt verify ─> JWT access token
-  │                                      │
-  │                                      └── Authorization: Bearer <token>
-  │
-  └── Protected FDR request ──> JWT middleware ──> role check ──> PostgreSQL
-                                                     │
-                                                     └── audit log
-```
+SecureFDR distinguishes **institution-submitted information** from **officer-verified information**. The prototype does not claim that a bank independently verified an FDR unless an authorized bank/financial verification service is actually integrated.
+
+## Technology
+
+- Frontend: HTML, CSS, JavaScript
+- Backend: Node.js + Express
+- Database: PostgreSQL
+- Authentication: bcrypt + JWT
+- Deployment: compatible with Node hosting platforms such as Vercel/Render/Railway when configured with PostgreSQL and environment variables
 
 ## Project structure
 
 ```text
 SecureFDR/
 ├── public/
-│   ├── index.html       # Login + dashboard UI
-│   ├── styles.css       # Responsive portal styling
-│   └── app.js           # Browser API client and dashboard logic
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.js
+│   ├── compliance.js
+│   ├── compliance-fix.js
+│   ├── renewal-workflow.js
+│   ├── lifecycle-workflows.js
+│   └── document-actions.js
 ├── src/
-│   ├── schema.sql       # PostgreSQL tables/indexes
-│   └── server.js        # Express API, auth and FDR workflow
+│   ├── schema.sql
+│   └── server.js
 ├── .env.example
 ├── .gitignore
 └── package.json
 ```
 
-## Run locally
+## Local setup
 
 1. Install Node.js and PostgreSQL.
 2. Run `npm install`.
 3. Copy `.env.example` to `.env`.
-4. Set a real `DATABASE_URL` and long random `JWT_SECRET`.
-5. Run `src/schema.sql` against the PostgreSQL database.
-6. Start with `npm run dev`.
-7. Open `http://localhost:3000`.
+4. Configure `DATABASE_URL` and a long random `JWT_SECRET`.
+5. Run `src/schema.sql` against PostgreSQL.
+6. Start with `npm start` or `npm run dev`.
+7. Open the deployed/local portal.
 
-Example:
+## SIH demonstration checklist
 
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
+Use these records to demonstrate the complete lifecycle:
 
-## Security notes
+1. **Normal FDR** — verified and active.
+2. **Duplicate FDR** — triggers a discrepancy case.
+3. **Missing certificate** — triggers a document alert.
+4. **90-day expiry** — renewal-soon state.
+5. **30-day expiry** — urgent state.
+6. **7-day expiry** — critical state.
+7. **Expired FDR** — overdue state.
+8. **Renewal** — old and new instrument linked conceptually.
+9. **Replacement** — replacement certificate and new instrument details.
+10. **Release/refund** — request → officer decision → audit record.
 
-- Never commit `.env` or production credentials.
-- Use HTTPS in production.
-- Public registration creates Institution accounts only; Officer/Admin accounts should be provisioned through an approved administrative workflow.
-- For production, add refresh-token/session rotation, MFA for privileged users, rate limiting, secure object storage, malware scanning for uploaded documents, encryption at rest, stronger password policy, and institution-level authorization checks.
+## Production hardening required before government use
 
-## Next SIH build
+- Authorized bank/FDR verification APIs
+- Secure object storage instead of database-embedded document data
+- Malware scanning and content-disposition hardening for uploads
+- MFA for privileged users
+- Refresh-token/session rotation and revocation
+- Rate limiting and account lockout controls
+- Stronger password and account-recovery policy
+- Encryption at rest and managed secrets
+- Centralized monitoring and incident logging
+- Institution-level authorization tests for every protected endpoint
+- Backup/restore and disaster-recovery procedures
+- Formal security testing and government/AICTE approval
 
-1. Real FDR PDF upload and secure object storage.
-2. OCR/data extraction from uploaded FDR documents.
-3. AI-assisted field validation and anomaly detection.
-4. Officer review queue with approve/reject reasons.
-5. Automated expiry reminders and escalation alerts.
-6. Institution-wise and national dashboards.
-7. Demo seed data and SIH presentation/prototype assets.
+## Scope statement
+
+SecureFDR is a prototype demonstrating the proposed administrative workflow and measurable digitization benefits. It should not be represented as an official AICTE system, an independently bank-verified service, or a production government platform until the required authorization, integration, security and operational controls are completed.
