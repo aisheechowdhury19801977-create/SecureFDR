@@ -1,6 +1,8 @@
 (() => {
   const STORAGE_KEY = 'securefdr_lifecycle_cases_v1';
+  const DAYS_NOTICE = 90;
   const DAYS_WARNING = 30;
+  const DAYS_CRITICAL = 7;
   let fdrs = [];
 
   const $ = (id) => document.getElementById(id);
@@ -28,8 +30,9 @@
     const days = daysTo(fdr.expiry_date);
     if (days === null) return { label: 'Unknown', cls: 'neutral' };
     if (days < 0 || fdr.status === 'EXPIRED') return { label: 'Expired', cls: 'danger' };
-    if (days <= 7) return { label: 'Critical', cls: 'danger' };
-    if (days <= DAYS_WARNING) return { label: 'Expiring soon', cls: 'warning' };
+    if (days <= DAYS_CRITICAL) return { label: 'Critical', cls: 'danger' };
+    if (days <= DAYS_WARNING) return { label: 'Urgent', cls: 'danger' };
+    if (days <= DAYS_NOTICE) return { label: 'Renewal soon', cls: 'warning' };
     return { label: 'Healthy', cls: 'success' };
   }
 
@@ -47,8 +50,14 @@
 
   function duplicateIds(list) {
     const counts = new Map();
-    list.forEach(f => counts.set(String(f.fdr_number || '').trim().toLowerCase(), (counts.get(String(f.fdr_number || '').trim().toLowerCase()) || 0) + 1));
-    return new Set(list.filter(f => counts.get(String(f.fdr_number || '').trim().toLowerCase()) > 1).map(f => f.id));
+    list.forEach(f => {
+      const key = String(f.fdr_number || '').trim().toLowerCase();
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return new Set(list.filter(f => {
+      const key = String(f.fdr_number || '').trim().toLowerCase();
+      return counts.get(key) > 1 && key;
+    }).map(f => f.id));
   }
 
   function injectStyles() {
@@ -64,17 +73,16 @@
 
   function ensurePanel() {
     if ($('lifecyclePanel')) return;
-    const app = $('appView');
     const stats = $('stats');
-    if (!app || !stats) return;
+    if (!stats) return;
     const panel = document.createElement('div');
     panel.id = 'lifecyclePanel';
     panel.className = 'card panel life-panel';
     panel.innerHTML = `
-      <div class="panel-head"><div><p class="eyebrow">Lifecycle intelligence</p><h3>Monitoring, alerts & compliance actions</h3><p>Track maturity, missing documents, renewals, replacements and release/refund requests.</p></div><div class="life-toolbar"><button id="exportLifecycleBtn" class="life-btn">Export report</button><button id="refreshLifecycleBtn" class="life-btn primary">Refresh intelligence</button></div></div>
+      <div class="panel-head"><div><p class="eyebrow">Lifecycle intelligence</p><h3>FDR monitoring, alerts & compliance actions</h3><p>Track maturity, renewal, replacement, missing documents and release/refund requests.</p></div><div class="life-toolbar"><button id="exportLifecycleBtn" class="life-btn">Export report</button><button id="refreshLifecycleBtn" class="life-btn primary">Refresh intelligence</button></div></div>
       <div id="lifecycleStats" class="lifecycle-grid"></div>
       <div id="lifecycleAlerts" class="life-list"></div>
-      <div style="margin-top:18px"><div class="panel-head"><div><h3>FDR lifecycle tracker</h3><p>Smart checks identify cases that need officer attention.</p></div><div class="life-toolbar"><input id="lifeSearch" placeholder="Search FDR or bank"><select id="lifeFilter"><option value="ALL">All lifecycle risks</option><option value="EXPIRING">Expiring ≤ 30 days</option><option value="EXPIRED">Expired</option><option value="MISSING">Missing document</option><option value="DUPLICATE">Duplicate FDR number</option></select></div></div><div class="table-wrap"><table class="life-table"><thead><tr><th>FDR</th><th>Bank</th><th>Expiry</th><th>Risk</th><th>Discrepancies</th><th>Lifecycle action</th></tr></thead><tbody id="lifecycleRows"></tbody></table></div></div>
+      <div style="margin-top:18px"><div class="panel-head"><div><h3>FDR lifecycle tracker</h3><p>90-day notice, 30-day warning and 7-day critical monitoring.</p></div><div class="life-toolbar"><input id="lifeSearch" placeholder="Search FDR or bank"><select id="lifeFilter"><option value="ALL">All lifecycle risks</option><option value="NOTICE">Renewal ≤ 90 days</option><option value="EXPIRING">Urgent ≤ 30 days</option><option value="CRITICAL">Critical ≤ 7 days</option><option value="EXPIRED">Expired</option><option value="MISSING">Missing document</option><option value="DUPLICATE">Duplicate FDR number</option></select></div></div><div class="table-wrap"><table class="life-table"><thead><tr><th>FDR</th><th>Bank</th><th>Expiry</th><th>Risk</th><th>Discrepancies</th><th>Lifecycle action</th></tr></thead><tbody id="lifecycleRows"></tbody></table></div></div>
       <div id="lifecycleCaseNote" class="life-note" style="margin-top:14px">Prototype lifecycle actions are stored in this browser. Production deployment should persist these cases in the central database and connect authorized notification services.</div>
     `;
     stats.insertAdjacentElement('afterend', panel);
@@ -113,14 +121,24 @@
   }
 
   function renderStats() {
-    const now = new Date();
-    const expiring = fdrs.filter(f => { const d=daysTo(f.expiry_date); return d !== null && d >= 0 && d <= DAYS_WARNING; }).length;
+    const notice = fdrs.filter(f => { const d=daysTo(f.expiry_date); return d !== null && d >= 0 && d <= DAYS_NOTICE; }).length;
+    const urgent = fdrs.filter(f => { const d=daysTo(f.expiry_date); return d !== null && d >= 0 && d <= DAYS_WARNING; }).length;
+    const critical = fdrs.filter(f => { const d=daysTo(f.expiry_date); return d !== null && d >= 0 && d <= DAYS_CRITICAL; }).length;
     const expired = fdrs.filter(f => { const d=daysTo(f.expiry_date); return d !== null && d < 0; }).length;
     const missing = fdrs.filter(f => !f.document_url).length;
     const verified = fdrs.filter(f => f.status === 'VERIFIED').length;
     const allCases = cases();
     const release = Object.values(allCases).filter(x => x.release?.status === 'REQUESTED').length;
-    $('lifecycleStats').innerHTML = [['Active',fdrs.filter(f=>f.status!=='EXPIRED').length],['Expiring ≤30d',expiring],['Expired',expired],['Missing documents',missing],['Verified',verified],['Release/refund requests',release]].map(([l,v])=>`<div class="life-stat"><span>${l}</span><strong>${v}</strong></div>`).join('');
+    $('lifecycleStats').innerHTML = [
+      ['Active',fdrs.filter(f=>f.status!=='EXPIRED').length],
+      ['Renewal ≤90d',notice],
+      ['Urgent ≤30d',urgent],
+      ['Critical ≤7d',critical],
+      ['Expired',expired],
+      ['Missing documents',missing],
+      ['Verified',verified],
+      ['Release/refund requests',release]
+    ].map(([l,v])=>`<div class="life-stat"><span>${l}</span><strong>${v}</strong></div>`).join('');
   }
 
   function renderAlerts() {
@@ -129,7 +147,9 @@
     fdrs.forEach(f => {
       const d = daysTo(f.expiry_date);
       if (d !== null && d < 0) alerts.push({level:'danger',title:`Expired FDR • ${f.fdr_number}`,text:`Expired ${Math.abs(d)} day(s) ago. Renewal/replacement follow-up required.`});
-      else if (d !== null && d <= 30) alerts.push({level:d <= 7 ? 'danger':'warning',title:`Maturity alert • ${f.fdr_number}`,text:`Expires in ${d} day(s). Start renewal/replacement workflow.`});
+      else if (d !== null && d <= DAYS_CRITICAL) alerts.push({level:'danger',title:`Critical maturity alert • ${f.fdr_number}`,text:`Expires in ${d} day(s). Immediate renewal/replacement action is required.`});
+      else if (d !== null && d <= DAYS_WARNING) alerts.push({level:'danger',title:`Urgent maturity alert • ${f.fdr_number}`,text:`Expires in ${d} day(s). Start the renewal/replacement workflow.`});
+      else if (d !== null && d <= DAYS_NOTICE) alerts.push({level:'warning',title:`Renewal notice • ${f.fdr_number}`,text:`Expires in ${d} day(s). Institution should prepare renewal or replacement.`});
       if (!f.document_url) alerts.push({level:'warning',title:`Missing certificate • ${f.fdr_number}`,text:'A supporting FDR document is not attached.'});
       if (duplicate.has(f.id)) alerts.push({level:'warning',title:`Duplicate FDR number • ${f.fdr_number}`,text:'The same FDR number appears in more than one record.'});
       discrepancies(f).forEach(issue => { if (!['Supporting certificate missing'].includes(issue)) alerts.push({level:'warning',title:`Data check • ${f.fdr_number}`,text:issue}); });
@@ -157,7 +177,9 @@
       const text = `${f.fdr_number} ${f.bank_name}`.toLowerCase();
       if (q && !text.includes(q)) return false;
       const d = daysTo(f.expiry_date);
+      if (filter==='NOTICE' && !(d !== null && d >= 0 && d <= DAYS_NOTICE)) return false;
       if (filter==='EXPIRING' && !(d !== null && d >= 0 && d <= DAYS_WARNING)) return false;
+      if (filter==='CRITICAL' && !(d !== null && d >= 0 && d <= DAYS_CRITICAL)) return false;
       if (filter==='EXPIRED' && !(d !== null && d < 0)) return false;
       if (filter==='MISSING' && f.document_url) return false;
       if (filter==='DUPLICATE' && !duplicate.has(f.id)) return false;
@@ -165,7 +187,6 @@
     });
     rows.innerHTML = visible.length ? visible.map(f => {
       const r = risk(f), issues = discrepancies(f), d = daysTo(f.expiry_date);
-      const item = cases()[f.id] || {};
       const actions = `<div class="life-actions"><button class="life-btn" data-life="renewal" data-id="${f.id}">Renewal</button><button class="life-btn" data-life="replacement" data-id="${f.id}">Replacement</button>${f.status==='VERIFIED' ? `<button class="life-btn danger" data-life="release" data-id="${f.id}">Release / Refund</button>` : ''}</div>`;
       return `<tr><td><strong>${esc(f.fdr_number)}</strong><br><small>${esc(f.institution_name || '')}</small></td><td>${esc(f.bank_name)}</td><td>${esc(String(f.expiry_date).slice(0,10))}<br><small>${d === null ? 'Unknown' : d < 0 ? `${Math.abs(d)}d overdue` : `${d}d left`}</small></td><td><span class="life-badge ${r.cls}">${r.label}</span></td><td>${issues.length ? `<span class="life-badge warning">${issues.length} issue(s)</span><br><small>${esc(issues.slice(0,2).join(', '))}</small>` : '<span class="life-badge success">Clear</span>'}</td><td>${actions}<small class="life-muted">${esc(actionSummary(f))}</small></td></tr>`;
     }).join('') : '<tr><td colspan="6" class="life-muted">No matching FDR records.</td></tr>';
