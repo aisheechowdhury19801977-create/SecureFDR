@@ -81,54 +81,6 @@ function formatDateTime(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-IN');
 }
 
-function documentActions(fdr) {
-  if (!fdr.document_url) return '<span class="muted-text">No certificate</span>';
-  return `<div class="document-actions">
-    <button type="button" class="action-btn" data-document-action="view" data-id="${escapeHtml(fdr.id)}">View</button>
-    <button type="button" class="action-btn success" data-document-action="download" data-id="${escapeHtml(fdr.id)}">Download</button>
-  </div>`;
-}
-
-async function openStoredDocument(fdr, download = false) {
-  const response = await fetch(`/api/fdr/${encodeURIComponent(fdr.id)}/document${download ? '?download=1' : ''}`, {
-    headers: { Authorization: `Bearer ${state.token}` }
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Unable to retrieve certificate');
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  if (download) {
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fdr.document_name || 'FDR_certificate';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } else {
-    window.open(url, '_blank', 'noopener');
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
-
-function wireDocumentActions(container, fdrs) {
-  container.querySelectorAll('[data-document-action]').forEach(button => {
-    button.addEventListener('click', async () => {
-      const fdr = fdrs.find(item => String(item.id) === String(button.dataset.id));
-      if (!fdr) return;
-      button.disabled = true;
-      try {
-        await openStoredDocument(fdr, button.dataset.documentAction === 'download');
-      } catch (error) {
-        alert(error.message || 'Unable to retrieve certificate');
-      } finally {
-        button.disabled = false;
-      }
-    });
-  });
-}
-
 function verificationSummary(fdr) {
   if (fdr.status === 'VERIFIED') {
     const by = fdr.verified_by_name || 'Verification Officer';
@@ -149,31 +101,20 @@ async function loadFdrs() {
     const counts = countsFor(data.fdrs);
     for (const fdr of data.fdrs) {
       const tr = document.createElement('tr');
+      tr.dataset.fdrId = fdr.id;
       tr.innerHTML = `<td><strong>${escapeHtml(fdr.fdr_number)}</strong></td>
         <td>${escapeHtml(fdr.bank_name)}</td>
         <td>₹${Number(fdr.amount).toLocaleString('en-IN')}</td>
         <td>${formatDate(fdr.expiry_date)}</td>
         <td>${statusPill(fdr.status)}</td>
-        <td>${verificationSummary(fdr)}</td>
-        <td>${documentActions(fdr)}</td>`;
+        <td>${verificationSummary(fdr)}</td>`;
       rows.appendChild(tr);
     }
-    const table = rows.closest('table');
-    if (table) {
-      const header = table.querySelector('thead tr');
-      if (header && !header.querySelector('[data-document-header]')) {
-        const th = document.createElement('th');
-        th.dataset.documentHeader = 'true';
-        th.textContent = 'Certificate';
-        header.appendChild(th);
-      }
-    }
-    wireDocumentActions(rows, data.fdrs);
     $('stats').innerHTML = [
       ['Total FDRs', counts.total], ['Verified', counts.verified], ['Pending review', counts.review], ['Expired', counts.expired]
     ].map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
   } catch (error) {
-    $('fdrRows').innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
+    $('fdrRows').innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
@@ -228,13 +169,9 @@ function openReviewModal(fdr) {
   $('reviewVerificationNote').textContent = fdr.verification_note || 'No verification note recorded.';
   const documentBox = $('reviewDocument');
   if (fdr.document_url) {
-    documentBox.innerHTML = `<div class="document-actions"><button type="button" class="action-btn" id="reviewViewDocument">View certificate</button><button type="button" class="action-btn success" id="reviewDownloadDocument">Download certificate</button></div>`;
-    $('reviewViewDocument').addEventListener('click', async () => {
-      try { await openStoredDocument(fdr, false); } catch (error) { alert(error.message || 'Unable to open certificate'); }
-    });
-    $('reviewDownloadDocument').addEventListener('click', async () => {
-      try { await openStoredDocument(fdr, true); } catch (error) { alert(error.message || 'Unable to download certificate'); }
-    });
+    const url = escapeHtml(fdr.document_url);
+    const name = escapeHtml(fdr.document_name || 'FDR document');
+    documentBox.innerHTML = `<div class="document-actions"><a class="action-btn" href="${url}" target="_blank" rel="noopener">View certificate</a><a class="action-btn success" href="${url}" download="${name}">Download certificate</a></div>`;
   } else {
     documentBox.innerHTML = `<span class="document-missing">📄 ${escapeHtml(fdr.document_name || 'No document attached')}</span><small>Document upload/link can be connected here.</small>`;
   }
@@ -312,7 +249,24 @@ $('registerForm').addEventListener('submit', async (event) => {
 
 $('fdrForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  try { await api('/api/fdr', { method: 'POST', body: JSON.stringify({ fdrNumber: $('fdrNumber').value, bankName: $('bankName').value, amount: Number($('amount').value), issueDate: $('issueDate').value, expiryDate: $('expiryDate').value, documentName: $('documentName').value }) }); event.target.reset(); setMessage('fdrMessage', 'FDR submitted successfully.', true); await loadFdrs(); }
+  try {
+    const file = $('documentFile')?.files?.[0];
+    let documentUrl;
+    if (file) {
+      const MAX_FILE_BYTES = 600 * 1024;
+      const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+      if (!ALLOWED_TYPES.includes(file.type)) throw new Error('Please select a PDF, JPG or PNG file.');
+      if (file.size > MAX_FILE_BYTES) throw new Error('The document must be 600 KB or smaller for this prototype.');
+      documentUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Unable to read the selected document.'));
+        reader.readAsDataURL(file);
+      });
+    }
+    await api('/api/fdr', { method: 'POST', body: JSON.stringify({ fdrNumber: $('fdrNumber').value, bankName: $('bankName').value, amount: Number($('amount').value), issueDate: $('issueDate').value, expiryDate: $('expiryDate').value, documentName: $('documentName').value || file?.name || 'FDR_certificate', documentUrl }) });
+    event.target.reset(); setMessage('fdrMessage', 'FDR submitted successfully.', true); await loadFdrs();
+  }
   catch (error) { setMessage('fdrMessage', error.message); }
 });
 
