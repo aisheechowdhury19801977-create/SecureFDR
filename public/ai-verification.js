@@ -2,247 +2,29 @@
   const MAX_FILE_BYTES = 600 * 1024;
   const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
   const SCRIPT_CACHE = {};
-
   const state = { analysis: null, file: null };
   const $ = (id) => document.getElementById(id);
 
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
-  }
-
+  function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c])); }
   function addStyles() {
     if ($('aiVerificationStyles')) return;
-    const style = document.createElement('style');
-    style.id = 'aiVerificationStyles';
-    style.textContent = `
-      .ai-box{margin-top:14px;border:1px solid #d8e2f0;border-radius:12px;background:#f7faff;padding:14px}
-      .ai-head{display:flex;justify-content:space-between;gap:12px;align-items:center}
-      .ai-head strong{color:#123d78}.ai-head small{display:block;color:#6b7d98;margin-top:3px}
-      .ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ai-actions button{border:0;border-radius:8px;padding:9px 13px;cursor:pointer;font-weight:700}
-      .ai-primary{background:#173f78;color:#fff}.ai-secondary{background:#fff;color:#173f78;border:1px solid #c8d5e7!important}
-      .ai-result{margin-top:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-      .ai-result>div{background:#fff;border:1px solid #e1e8f2;border-radius:9px;padding:9px}.ai-result span{display:block;font-size:11px;color:#71819a;text-transform:uppercase}.ai-result b{display:block;margin-top:3px}
-      .ai-match{color:#177245}.ai-warning{color:#a15b00}.ai-danger{color:#b23b3b}
-      .ai-progress{height:7px;background:#e3eaf4;border-radius:99px;overflow:hidden;margin-top:10px}.ai-progress i{display:block;height:100%;width:0;background:#2f66ad;transition:width .25s}
-      .ai-text{margin-top:10px;background:#fff;border:1px dashed #cdd8e7;border-radius:9px;padding:10px;font-size:12px;line-height:1.5;max-height:140px;overflow:auto;white-space:pre-wrap}
-      @media(max-width:700px){.ai-result{grid-template-columns:1fr}.ai-head{align-items:flex-start;flex-direction:column}}
-    `;
+    const style = document.createElement('style'); style.id = 'aiVerificationStyles';
+    style.textContent = `.ai-box{margin-top:14px;border:1px solid #d8e2f0;border-radius:12px;background:#f7faff;padding:14px}.ai-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.ai-head strong{color:#123d78}.ai-head small{display:block;color:#6b7d98;margin-top:3px}.ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ai-actions button{border-radius:8px;padding:9px 13px;cursor:pointer;font-weight:700}.ai-primary{background:#173f78;color:#fff;border:0}.ai-secondary{background:#fff;color:#173f78;border:1px solid #c8d5e7}.ai-result{margin-top:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.ai-result>div{background:#fff;border:1px solid #e1e8f2;border-radius:9px;padding:9px}.ai-result span{display:block;font-size:11px;color:#71819a;text-transform:uppercase}.ai-result b{display:block;margin-top:3px}.ai-match{color:#177245}.ai-warning{color:#a15b00}.ai-danger{color:#b23b3b}.ai-progress{height:7px;background:#e3eaf4;border-radius:99px;overflow:hidden;margin-top:10px}.ai-progress i{display:block;height:100%;width:0;background:#2f66ad;transition:width .25s}.ai-text{margin-top:10px;background:#fff;border:1px solid #cdd8e7;border-radius:9px;padding:0;overflow:hidden}.ai-check{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid #edf1f6;font-size:12px}.ai-check:last-child{border-bottom:0}.ai-check .icon{font-size:16px}.ai-check.match .icon{color:#177245}.ai-check.mismatch .icon{color:#b23b3b}.ai-check.warning .icon{color:#a15b00}.ai-values{color:#5f7189}.ai-values b{color:#172b4d}.ai-discrepancy{margin-top:10px;padding:12px;border-radius:10px;border:1px solid #f1b9b9;background:#fff5f5}.ai-discrepancy strong{color:#a51d1d}.ai-review{margin-top:10px;padding:12px;border-radius:10px;background:#fff;border:1px solid #d8e2f0}.ai-review textarea{width:100%;box-sizing:border-box;margin-top:7px;border:1px solid #ccd7e5;border-radius:8px;padding:9px}.ai-review-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}.ai-review-actions button{border:1px solid #cbd7e6;background:#fff;border-radius:8px;padding:8px 11px;font-weight:700;cursor:pointer}.ai-review-actions .primary{background:#173f78;color:#fff;border-color:#173f78}@media(max-width:700px){.ai-result{grid-template-columns:1fr}.ai-head{align-items:flex-start;flex-direction:column}.ai-check{grid-template-columns:24px 1fr}.ai-values{grid-column:2}}`;
     document.head.appendChild(style);
   }
-
-  function loadScript(src) {
-    if (SCRIPT_CACHE[src]) return SCRIPT_CACHE[src];
-    SCRIPT_CACHE[src] = new Promise((resolve, reject) => {
-      const existing = document.querySelector(`script[src="${src}"]`);
-      if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', reject); return; }
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      script.onload = resolve;
-      script.onerror = () => reject(new Error(`Unable to load document analysis engine: ${src}`));
-      document.head.appendChild(script);
-    });
-    return SCRIPT_CACHE[src];
-  }
-
-  async function extractPdfText(file, progress) {
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
-    const pdfjs = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
-    if (!pdfjs) throw new Error('PDF text engine was not available.');
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: buffer }).promise;
-    let text = '';
-    const pages = Math.min(pdf.numPages, 5);
-    for (let pageNo = 1; pageNo <= pages; pageNo++) {
-      const page = await pdf.getPage(pageNo);
-      const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(' ') + '\n';
-      progress(Math.round((pageNo / pages) * 55));
-    }
-    return text.trim();
-  }
-
-  async function extractImageText(file, progress) {
-    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-    if (!window.Tesseract) throw new Error('OCR engine was not available.');
-    const worker = await Tesseract.createWorker('eng', 1, {
-      logger: message => {
-        if (message.status === 'recognizing text' && message.progress) progress(20 + Math.round(message.progress * 65));
-      }
-    });
-    try {
-      const result = await worker.recognize(file);
-      return result.data.text || '';
-    } finally {
-      await worker.terminate();
-    }
-  }
-
-  function normalise(text) {
-    return String(text || '').replace(/\s+/g, ' ').trim();
-  }
-
-  function firstMatch(text, patterns) {
-    for (const pattern of patterns) {
-      const match = text.match(pattern);
-      if (match) return normalise(match[1] || match[0]);
-    }
-    return '';
-  }
-
-  function extractFields(raw) {
-    const text = normalise(raw);
-    const fdrNumber = firstMatch(text, [
-      /(?:FDR\s*(?:NO|NUMBER|#)?|FIXED\s+DEPOSIT\s+RECEIPT\s*(?:NO|NUMBER|#)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\/-]{4,})/i,
-      /\b(FDR[-\/][A-Z0-9\/-]{5,})\b/i
-    ]);
-    const amount = firstMatch(text, [
-      /(?:AMOUNT|DEPOSIT\s+AMOUNT|PRINCIPAL)\s*[:\-]?\s*(?:INR|RS\.?|₹)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)/i,
-      /(?:INR|RS\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?)/i
-    ]);
-    const issueDate = firstMatch(text, [
-      /(?:ISSUE\s+DATE|DATE\s+OF\s+ISSUE|DEPOSIT\s+DATE)\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i
-    ]);
-    const expiryDate = firstMatch(text, [
-      /(?:MATURITY\s+DATE|EXPIRY\s+DATE|DATE\s+OF\s+MATURITY)\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i
-    ]);
-    const bankName = firstMatch(text, [
-      /(?:BANK|ISSUING\s+BANK|BANK\/FINANCIAL\s+INSTITUTION)\s*[:\-]?\s*([A-Z][A-Z0-9 .&,'-]{4,})/i,
-      /\b(STATE\s+BANK\s+OF\s+INDIA|PUNJAB\s+NATIONAL\s+BANK|HDFC\s+BANK|ICICI\s+BANK|AXIS\s+BANK)\b/i
-    ]);
-    return { fdrNumber, bankName, amount, issueDate, expiryDate, rawText: raw };
-  }
-
-  function dateToInput(value) {
-    if (!value) return '';
-    const parts = value.replace(/\./g, '/').replace(/-/g, '/').split('/');
-    if (parts.length !== 3) return '';
-    let [d, m, y] = parts;
-    if (y.length === 2) y = Number(y) >= 50 ? `19${y}` : `20${y}`;
-    if (d.length === 4) [y, m, d] = parts;
-    if (Number(m) > 12 && Number(d) <= 12) [d, m] = [m, d];
-    if (!/^\d{4}$/.test(y)) return '';
-    return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-  }
-
-  function compare(extracted) {
-    const entered = {
-      fdrNumber: $('fdrNumber')?.value?.trim() || '',
-      bankName: $('bankName')?.value?.trim() || '',
-      amount: $('amount')?.value?.trim() || '',
-      issueDate: $('issueDate')?.value || '',
-      expiryDate: $('expiryDate')?.value || ''
-    };
-    const checks = [];
-    const add = (label, actual, expected, comparable = true) => {
-      if (!expected) checks.push({ label, state:'warning', actual: actual || 'Not detected', expected:'Not detected' });
-      else if (!comparable) checks.push({ label, state:'warning', actual, expected });
-      else checks.push({ label, state: normalise(actual).toLowerCase() === normalise(expected).toLowerCase() ? 'match' : 'mismatch', actual: actual || '—', expected });
-    };
-    add('FDR number', extracted.fdrNumber, entered.fdrNumber);
-    add('Bank', extracted.bankName, entered.bankName, Boolean(extracted.bankName));
-    add('Amount', extracted.amount.replace(/[,₹\s]/g,''), entered.amount.replace(/[,₹\s]/g,''), Boolean(extracted.amount));
-    add('Issue date', dateToInput(extracted.issueDate), entered.issueDate, Boolean(extracted.issueDate));
-    add('Expiry / maturity', dateToInput(extracted.expiryDate), entered.expiryDate, Boolean(extracted.expiryDate));
-    const matches = checks.filter(c => c.state === 'match').length;
-    const mismatches = checks.filter(c => c.state === 'mismatch').length;
-    const detected = checks.filter(c => c.state !== 'warning').length;
-    const score = detected ? Math.max(0, Math.round((matches / detected) * 100)) : 0;
-    return { checks, matches, mismatches, score, detected };
-  }
-
-  function renderResult(extracted, comparison, message = '') {
-    const box = $('aiVerificationResult');
-    if (!box) return;
-    const status = comparison.mismatches ? 'mismatch' : comparison.detected ? 'match' : 'warning';
-    const label = comparison.mismatches ? 'Discrepancy detected' : comparison.detected ? 'Document consistent' : 'Manual review required';
-    box.innerHTML = `
-      <div class="ai-result">
-        <div><span>Confidence</span><b class="ai-${status}">${comparison.score}%</b></div>
-        <div><span>Fields matched</span><b>${comparison.matches}/${comparison.checks.length}</b></div>
-        <div><span>Decision</span><b class="ai-${status}">${label}</b></div>
-      </div>
-      <div class="ai-text">${comparison.checks.map(c => `${c.state === 'match' ? '✓' : c.state === 'mismatch' ? '✕' : '⚠'} ${escapeHtml(c.label)} — document: ${escapeHtml(c.actual)} | portal: ${escapeHtml(c.expected)}`).join('\n')}</div>
-      ${message ? `<div class="message">${escapeHtml(message)}</div>` : ''}
-    `;
-  }
-
-  function buildUi() {
-    addStyles();
-    const file = $('documentFile');
-    if (!file || $('aiVerificationBox')) return;
-    const box = document.createElement('div');
-    box.id = 'aiVerificationBox';
-    box.className = 'ai-box';
-    box.innerHTML = `
-      <div class="ai-head"><div><strong>🤖 Document Verification Assistant</strong><small>Extract FDR details from the uploaded certificate and compare them with the portal entry.</small></div><span id="aiStatus" class="message">Ready</span></div>
-      <div class="ai-actions"><button type="button" id="aiAnalyzeBtn" class="ai-primary">Analyze certificate</button><button type="button" id="aiApplyBtn" class="ai-secondary" disabled>Apply detected fields</button></div>
-      <div class="ai-progress"><i id="aiProgressBar"></i></div>
-      <div id="aiVerificationResult"></div>
-    `;
-    file.closest('label')?.insertAdjacentElement('afterend', box);
-
-    file.addEventListener('change', () => {
-      state.file = file.files?.[0] || null;
-      state.analysis = null;
-      $('aiApplyBtn').disabled = true;
-      $('aiVerificationResult').innerHTML = '';
-      $('aiStatus').textContent = state.file ? `${state.file.name} selected` : 'Ready';
-    });
-
-    $('aiAnalyzeBtn').addEventListener('click', analyze);
-    $('aiApplyBtn').addEventListener('click', applyDetectedFields);
-  }
-
-  async function analyze() {
-    const file = state.file || $('documentFile')?.files?.[0];
-    if (!file) return alert('Please choose an FDR certificate first.');
-    if (!ALLOWED_TYPES.includes(file.type)) return alert('Please select a PDF, JPG or PNG file.');
-    if (file.size > MAX_FILE_BYTES) return alert('The document must be 600 KB or smaller for this prototype.');
-
-    const progress = (value) => { $('aiProgressBar').style.width = `${Math.min(100, value)}%`; };
-    $('aiStatus').textContent = 'Analyzing document…';
-    $('aiAnalyzeBtn').disabled = true;
-    try {
-      let rawText = file.type === 'application/pdf' ? await extractPdfText(file, progress) : await extractImageText(file, progress);
-      if (!rawText.trim()) {
-        renderResult({}, { checks: [], matches: 0, mismatches: 0, score: 0, detected: 0 }, 'No machine-readable text was found. Officer manual review is required for this document.');
-        return;
-      }
-      progress(90);
-      const extracted = extractFields(rawText);
-      const comparison = compare(extracted);
-      state.analysis = { extracted, comparison };
-      renderResult(extracted, comparison);
-      $('aiApplyBtn').disabled = comparison.detected === 0;
-      $('aiStatus').textContent = comparison.mismatches ? 'Review discrepancy' : 'Analysis complete';
-      progress(100);
-    } catch (error) {
-      $('aiStatus').textContent = 'Analysis unavailable';
-      renderResult({}, { checks: [], matches: 0, mismatches: 0, score: 0, detected: 0 }, error.message);
-    } finally {
-      $('aiAnalyzeBtn').disabled = false;
-    }
-  }
-
-  function applyDetectedFields() {
-    const extracted = state.analysis?.extracted;
-    if (!extracted) return;
-    if (extracted.fdrNumber && !$('fdrNumber').value) $('fdrNumber').value = extracted.fdrNumber;
-    if (extracted.bankName && !$('bankName').value) $('bankName').value = extracted.bankName;
-    if (extracted.amount && !$('amount').value) $('amount').value = extracted.amount.replace(/,/g,'');
-    const issue = dateToInput(extracted.issueDate); const expiry = dateToInput(extracted.expiryDate);
-    if (issue && !$('issueDate').value) $('issueDate').value = issue;
-    if (expiry && !$('expiryDate').value) $('expiryDate').value = expiry;
-    const comparison = compare(extracted);
-    renderResult(extracted, comparison, 'Detected fields applied where portal fields were empty. Please review before submission.');
-  }
-
-  function init() {
-    buildUi();
-    const observer = new MutationObserver(buildUi);
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  function loadScript(src){if(SCRIPT_CACHE[src])return SCRIPT_CACHE[src];SCRIPT_CACHE[src]=new Promise((resolve,reject)=>{const existing=document.querySelector(`script[src="${src}"]`);if(existing){existing.addEventListener('load',()=>resolve());existing.addEventListener('error',reject);return}const script=document.createElement('script');script.src=src;script.async=true;script.onload=resolve;script.onerror=()=>reject(new Error(`Unable to load document analysis engine: ${src}`));document.head.appendChild(script)});return SCRIPT_CACHE[src]}
+  async function extractPdfText(file,progress){await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');const pdfjs=window.pdfjsLib||window['pdfjs-dist/build/pdf'];if(!pdfjs)throw new Error('PDF text engine was not available.');const buffer=await file.arrayBuffer();const pdf=await pdfjs.getDocument({data:buffer}).promise;let text='';const pages=Math.min(pdf.numPages,5);for(let pageNo=1;pageNo<=pages;pageNo++){const page=await pdf.getPage(pageNo);const content=await page.getTextContent();text+=content.items.map(item=>item.str).join(' ')+'\n';progress(Math.round((pageNo/pages)*55))}return text.trim()}
+  async function extractImageText(file,progress){await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');if(!window.Tesseract)throw new Error('OCR engine was not available.');const worker=await Tesseract.createWorker('eng',1,{logger:message=>{if(message.status==='recognizing text'&&message.progress)progress(20+Math.round(message.progress*65))}});try{const result=await worker.recognize(file);return result.data.text||''}finally{await worker.terminate()}}
+  function normalise(text){return String(text||'').replace(/\s+/g,' ').trim()}
+  function firstMatch(text,patterns){for(const pattern of patterns){const match=text.match(pattern);if(match)return normalise(match[1]||match[0])}return ''}
+  function extractFields(raw){const text=normalise(raw);const fdrNumber=firstMatch(text,[/(?:FDR\s*(?:NO|NUMBER|#)?|FIXED\s+DEPOSIT\s+RECEIPT\s*(?:NO|NUMBER|#)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\/-]{4,})/i,/\b(FDR[-\/][A-Z0-9\/-]{5,})\b/i]);const amount=firstMatch(text,[/(?:AMOUNT|DEPOSIT\s+AMOUNT|PRINCIPAL)\s*[:\-]?\s*(?:INR|RS\.?|₹)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)/i,/(?:INR|RS\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?)/i]);const issueDate=firstMatch(text,[/(?:ISSUE\s+DATE|DATE\s+OF\s+ISSUE|DEPOSIT\s+DATE)\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i]);const expiryDate=firstMatch(text,[/(?:MATURITY\s+DATE|EXPIRY\s+DATE|DATE\s+OF\s+MATURITY)\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i]);const bankName=firstMatch(text,[/(?:BANK|ISSUING\s+BANK|BANK\/FINANCIAL\s+INSTITUTION)\s*[:\-]?\s*([A-Z][A-Z0-9 .&,'-]{4,})/i,/\b(STATE\s+BANK\s+OF\s+INDIA|PUNJAB\s+NATIONAL\s+BANK|HDFC\s+BANK|ICICI\s+BANK|AXIS\s+BANK)\b/i]);return{fdrNumber,bankName,amount,issueDate,expiryDate,rawText:raw}}
+  function dateToInput(value){if(!value)return '';const parts=value.replace(/\./g,'/').replace(/-/g,'/').split('/');if(parts.length!==3)return '';let[d,m,y]=parts;if(y.length===2)y=Number(y)>=50?`19${y}`:`20${y}`;if(d.length===4)[y,m,d]=parts;if(Number(m)>12&&Number(d)<=12)[d,m]=[m,d];if(!/^\d{4}$/.test(y))return '';return`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
+  function compare(extracted){const entered={fdrNumber:$('fdrNumber')?.value?.trim()||'',bankName:$('bankName')?.value?.trim()||'',amount:$('amount')?.value?.trim()||'',issueDate:$('issueDate')?.value||'',expiryDate:$('expiryDate')?.value||''};const checks=[];const add=(label,actual,expected,comparable=true)=>{if(!expected)checks.push({label,state:'warning',actual:actual||'Not detected',expected:'Not entered'});else if(!comparable)checks.push({label,state:'warning',actual:actual||'Not detected',expected});else checks.push({label,state:normalise(actual).toLowerCase()===normalise(expected).toLowerCase()?'match':'mismatch',actual:actual||'—',expected})};add('FDR number',extracted.fdrNumber,entered.fdrNumber);add('Bank',extracted.bankName,entered.bankName,Boolean(extracted.bankName));add('Amount',extracted.amount.replace(/[,₹\s]/g,''),entered.amount.replace(/[,₹\s]/g,''),Boolean(extracted.amount));add('Issue date',dateToInput(extracted.issueDate),entered.issueDate,Boolean(extracted.issueDate));add('Expiry / maturity',dateToInput(extracted.expiryDate),entered.expiryDate,Boolean(extracted.expiryDate));const matches=checks.filter(c=>c.state==='match').length;const mismatches=checks.filter(c=>c.state==='mismatch').length;const detected=checks.filter(c=>c.state!=='warning').length;const score=detected?Math.max(0,Math.round((matches/detected)*100)):0;return{checks,matches,mismatches,score,detected}}
+  function renderResult(extracted,comparison,message=''){const box=$('aiVerificationResult');if(!box)return;const status=comparison.mismatches?'mismatch':comparison.detected?'match':'warning';const label=comparison.mismatches?'Discrepancy detected':comparison.detected?'Document consistent':'Manual review required';const checks=comparison.checks.map(c=>`<div class="ai-check ${c.state}"><span class="icon">${c.state==='match'?'✓':c.state==='mismatch'?'✕':'⚠'}</span><div><b>${escapeHtml(c.label)}</b><div class="ai-values">Document: <b>${escapeHtml(c.actual)}</b> · Portal: <b>${escapeHtml(c.expected)}</b></div></div><span>${c.state==='match'?'MATCH':c.state==='mismatch'?'MISMATCH':'REVIEW'}</span></div>`).join('');const discrepancyBlock=comparison.mismatches?`<div class="ai-discrepancy"><strong>⚠ Discrepancy Report</strong><div style="margin-top:5px">${comparison.mismatches} field(s) differ between the uploaded document and the portal entry. Final decision remains with the authorized officer.</div></div>`:'';box.innerHTML=`<div class="ai-result"><div><span>Confidence</span><b class="ai-${status}">${comparison.score}%</b></div><div><span>Fields matched</span><b>${comparison.matches}/${comparison.checks.length}</b></div><div><span>Decision</span><b class="ai-${status}">${label}</b></div></div><div class="ai-text">${checks||'<div class="ai-check warning"><span class="icon">⚠</span><div>No comparable fields were detected.</div><span>REVIEW</span></div>'}</div>${discrepancyBlock}${comparison.mismatches?`<div class="ai-review"><b>Officer review note</b><textarea id="aiReviewNote" rows="3" maxlength="500" placeholder="Record why this discrepancy was accepted, rejected, or sent for manual verification."></textarea><div class="ai-review-actions"><button type="button" id="aiFlagBtn">Flag for manual review</button><button type="button" id="aiResolveBtn" class="primary">Record review</button></div></div>`:''}${message?`<div class="message">${escapeHtml(message)}</div>`:''}`;if(comparison.mismatches){$('aiFlagBtn').addEventListener('click',()=>recordReview('FLAGGED'));$('aiResolveBtn').addEventListener('click',()=>recordReview('REVIEWED'))}}
+  function recordReview(status){const note=$('aiReviewNote')?.value?.trim();if(!note)return alert('Please add a review note before recording the discrepancy action.');const history=JSON.parse(localStorage.getItem('securefdr_discrepancy_reviews')||'[]');history.push({status,note,createdAt:new Date().toISOString(),fdrNumber:$('fdrNumber')?.value||''});localStorage.setItem('securefdr_discrepancy_reviews',JSON.stringify(history));$('aiReviewNote').value='';$('aiStatus').textContent=status==='FLAGGED'?'Flagged for manual review':'Review recorded';alert(status==='FLAGGED'?'Discrepancy flagged for manual review.':'Discrepancy review recorded.');}
+  function buildUi(){addStyles();const file=$('documentFile');if(!file||$('aiVerificationBox'))return;const box=document.createElement('div');box.id='aiVerificationBox';box.className='ai-box';box.innerHTML=`<div class="ai-head"><div><strong>🤖 Document Verification Assistant</strong><small>Extract FDR details and compare them with the portal entry.</small></div><span id="aiStatus" class="message">Ready</span></div><div class="ai-actions"><button type="button" id="aiAnalyzeBtn" class="ai-primary">Analyze certificate</button><button type="button" id="aiApplyBtn" class="ai-secondary" disabled>Apply detected fields</button></div><div class="ai-progress"><i id="aiProgressBar"></i></div><div id="aiVerificationResult"></div>`;file.closest('label')?.insertAdjacentElement('afterend',box);file.addEventListener('change',()=>{state.file=file.files?.[0]||null;state.analysis=null;$('aiApplyBtn').disabled=true;$('aiVerificationResult').innerHTML='';$('aiStatus').textContent=state.file?`${state.file.name} selected`:'Ready'});$('aiAnalyzeBtn').addEventListener('click',analyze);$('aiApplyBtn').addEventListener('click',applyDetectedFields)}
+  async function analyze(){const file=state.file||$('documentFile')?.files?.[0];if(!file)return alert('Please choose an FDR certificate first.');if(!ALLOWED_TYPES.includes(file.type))return alert('Please select a PDF, JPG or PNG file.');if(file.size>MAX_FILE_BYTES)return alert('The document must be 600 KB or smaller for this prototype.');const progress=value=>{$('aiProgressBar').style.width=`${Math.min(100,value)}%`};$('aiStatus').textContent='Analyzing document…';$('aiAnalyzeBtn').disabled=true;try{let rawText=file.type==='application/pdf'?await extractPdfText(file,progress):await extractImageText(file,progress);if(!rawText.trim()){renderResult({}, {checks:[],matches:0,mismatches:0,score:0,detected:0},'No machine-readable text was found. Officer manual review is required.');return}progress(90);const extracted=extractFields(rawText);const comparison=compare(extracted);state.analysis={extracted,comparison};renderResult(extracted,comparison);$('aiApplyBtn').disabled=comparison.detected===0;$('aiStatus').textContent=comparison.mismatches?'Review discrepancy':'Analysis complete';progress(100)}catch(error){$('aiStatus').textContent='Analysis unavailable';renderResult({}, {checks:[],matches:0,mismatches:0,score:0,detected:0},error.message)}finally{$('aiAnalyzeBtn').disabled=false}}
+  function applyDetectedFields(){const extracted=state.analysis?.extracted;if(!extracted)return;if(extracted.fdrNumber&&!$('fdrNumber').value)$('fdrNumber').value=extracted.fdrNumber;if(extracted.bankName&&!$('bankName').value)$('bankName').value=extracted.bankName;if(extracted.amount&&!$('amount').value)$('amount').value=extracted.amount.replace(/,/g,'');const issue=dateToInput(extracted.issueDate),expiry=dateToInput(extracted.expiryDate);if(issue&&!$('issueDate').value)$('issueDate').value=issue;if(expiry&&!$('expiryDate').value)$('expiryDate').value=expiry;const comparison=compare(extracted);renderResult(extracted,comparison,'Detected fields applied where portal fields were empty. Please review before submission.')}
+  function init(){buildUi();const observer=new MutationObserver(buildUi);observer.observe(document.body,{childList:true,subtree:true})}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
