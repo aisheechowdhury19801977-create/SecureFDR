@@ -50,6 +50,15 @@ function validateDocument(documentUrl) {
   return { ok: true };
 }
 
+function parseStoredDocument(documentUrl) {
+  const match = String(documentUrl || "").match(/^data:(application\/pdf|image\/jpeg|image\/png);base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return null;
+  return {
+    contentType: match[1],
+    buffer: Buffer.from(match[2], "base64")
+  };
+}
+
 async function ensureVerificationColumns() {
   await pool.query(`
     ALTER TABLE fdr_records
@@ -193,6 +202,39 @@ app.patch("/api/fdr/:id/document", authenticate, requireRole("INSTITUTION", "ADM
     console.error("FDR document upload database error:", error);
     if (error.code === "42P01") return res.status(503).json({ error: "Database schema is not initialized. Run src/schema.sql." });
     res.status(500).json({ error: "Unable to attach certificate" });
+  }
+});
+
+// Authenticated document delivery. The certificate is stored with the FDR record
+// and is only returned after the caller is authenticated and authorized.
+app.get("/api/fdr/:id/document", authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, institution_id, document_name, document_url
+       FROM fdr_records WHERE id = $1`,
+      [req.params.id]
+    );
+    const fdr = result.rows[0];
+    if (!fdr) return res.status(404).json({ error: "FDR not found" });
+
+    if (req.user.role === "INSTITUTION" && fdr.institution_id !== req.user.sub) {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+    if (!fdr.document_url) return res.status(404).json({ error: "No certificate uploaded" });
+
+    const document = parseStoredDocument(fdr.document_url);
+    if (!document) return res.status(500).json({ error: "Stored certificate is invalid" });
+
+    const disposition = String(req.query.download || "") === "1" ? "attachment" : "inline";
+    const safeName = String(fdr.document_name || "FDR_certificate").replace(/[^a-zA-Z0-9._-]/g, "_");
+    res.setHeader("Content-Type", document.contentType);
+    res.setHeader("Content-Length", document.buffer.length);
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(document.buffer);
+  } catch (error) {
+    console.error("FDR document delivery error:", error);
+    res.status(500).json({ error: "Unable to retrieve certificate" });
   }
 });
 
