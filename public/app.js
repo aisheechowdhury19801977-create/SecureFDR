@@ -83,12 +83,50 @@ function formatDateTime(value) {
 
 function documentActions(fdr) {
   if (!fdr.document_url) return '<span class="muted-text">No certificate</span>';
-  const name = escapeHtml(fdr.document_name || 'FDR_certificate');
-  const url = escapeHtml(fdr.document_url);
   return `<div class="document-actions">
-    <a class="action-btn" href="${url}" target="_blank" rel="noopener">View</a>
-    <a class="action-btn success" href="${url}" download="${name}">Download</a>
+    <button type="button" class="action-btn" data-document-action="view" data-id="${escapeHtml(fdr.id)}">View</button>
+    <button type="button" class="action-btn success" data-document-action="download" data-id="${escapeHtml(fdr.id)}">Download</button>
   </div>`;
+}
+
+async function openStoredDocument(fdr, download = false) {
+  const response = await fetch(`/api/fdr/${encodeURIComponent(fdr.id)}/document${download ? '?download=1' : ''}`, {
+    headers: { Authorization: `Bearer ${state.token}` }
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Unable to retrieve certificate');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  if (download) {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fdr.document_name || 'FDR_certificate';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } else {
+    window.open(url, '_blank', 'noopener');
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function wireDocumentActions(container, fdrs) {
+  container.querySelectorAll('[data-document-action]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const fdr = fdrs.find(item => String(item.id) === String(button.dataset.id));
+      if (!fdr) return;
+      button.disabled = true;
+      try {
+        await openStoredDocument(fdr, button.dataset.documentAction === 'download');
+      } catch (error) {
+        alert(error.message || 'Unable to retrieve certificate');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 }
 
 function verificationSummary(fdr) {
@@ -130,6 +168,7 @@ async function loadFdrs() {
         header.appendChild(th);
       }
     }
+    wireDocumentActions(rows, data.fdrs);
     $('stats').innerHTML = [
       ['Total FDRs', counts.total], ['Verified', counts.verified], ['Pending review', counts.review], ['Expired', counts.expired]
     ].map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
@@ -189,9 +228,13 @@ function openReviewModal(fdr) {
   $('reviewVerificationNote').textContent = fdr.verification_note || 'No verification note recorded.';
   const documentBox = $('reviewDocument');
   if (fdr.document_url) {
-    const url = escapeHtml(fdr.document_url);
-    const name = escapeHtml(fdr.document_name || 'FDR document');
-    documentBox.innerHTML = `<div class="document-actions"><a class="action-btn" href="${url}" target="_blank" rel="noopener">View certificate</a><a class="action-btn success" href="${url}" download="${name}">Download certificate</a></div>`;
+    documentBox.innerHTML = `<div class="document-actions"><button type="button" class="action-btn" id="reviewViewDocument">View certificate</button><button type="button" class="action-btn success" id="reviewDownloadDocument">Download certificate</button></div>`;
+    $('reviewViewDocument').addEventListener('click', async () => {
+      try { await openStoredDocument(fdr, false); } catch (error) { alert(error.message || 'Unable to open certificate'); }
+    });
+    $('reviewDownloadDocument').addEventListener('click', async () => {
+      try { await openStoredDocument(fdr, true); } catch (error) { alert(error.message || 'Unable to download certificate'); }
+    });
   } else {
     documentBox.innerHTML = `<span class="document-missing">📄 ${escapeHtml(fdr.document_name || 'No document attached')}</span><small>Document upload/link can be connected here.</small>`;
   }
