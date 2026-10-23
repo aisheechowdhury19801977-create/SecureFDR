@@ -16,6 +16,39 @@
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
+  function documentUrl(fdr, download = false) {
+    return `/api/fdr/${encodeURIComponent(fdr.id)}/document${download ? '?download=1' : ''}`;
+  }
+
+  async function openStoredDocument(fdr) {
+    const response = await fetch(documentUrl(fdr), { headers: authHeaders() });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Unable to open certificate');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  async function downloadStoredDocument(fdr) {
+    const response = await fetch(documentUrl(fdr, true), { headers: authHeaders() });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Unable to download certificate');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fdr.document_name || 'FDR_certificate';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
   function createUploadControl(fdr, cell, refresh) {
     if (cell.querySelector('[data-upload-document]')) return;
 
@@ -78,18 +111,29 @@
     const actions = document.createElement('div');
     actions.className = 'document-actions';
 
-    const view = document.createElement('a');
+    const view = document.createElement('button');
+    view.type = 'button';
     view.className = 'action-btn';
-    view.href = fdr.document_url;
-    view.target = '_blank';
-    view.rel = 'noopener';
     view.textContent = 'View';
+    view.addEventListener('click', async () => {
+      try {
+        await openStoredDocument(fdr);
+      } catch (error) {
+        alert(error.message || 'Unable to open certificate');
+      }
+    });
 
-    const download = document.createElement('a');
+    const download = document.createElement('button');
+    download.type = 'button';
     download.className = 'action-btn success';
-    download.href = fdr.document_url;
-    download.download = fdr.document_name || 'FDR_certificate';
     download.textContent = 'Download';
+    download.addEventListener('click', async () => {
+      try {
+        await downloadStoredDocument(fdr);
+      } catch (error) {
+        alert(error.message || 'Unable to download certificate');
+      }
+    });
 
     actions.append(view, download);
     cell.appendChild(actions);
