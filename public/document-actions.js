@@ -206,8 +206,17 @@
     }
   }
 
+  function loadLifecycleModule() {
+    if (document.querySelector('script[data-lifecycle-module]')) return;
+    const script = document.createElement('script');
+    script.src = '/lifecycle.js';
+    script.dataset.lifecycleModule = 'true';
+    document.body.appendChild(script);
+  }
+
   function start() {
     enhanceRecordTable();
+    loadLifecycleModule();
     setInterval(enhanceRecordTable, 2000);
   }
 
