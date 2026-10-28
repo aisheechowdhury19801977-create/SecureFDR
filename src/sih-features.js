@@ -21,19 +21,54 @@ function sihRouter(pool) {
       CREATE TABLE IF NOT EXISTS discrepancy_cases (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         fdr_id UUID NOT NULL REFERENCES fdr_records(id) ON DELETE CASCADE,
-        institution_id UUID NOT NULL REFERENCES users(id),
-        issue_type TEXT NOT NULL,
+        institution_id UUID REFERENCES users(id),
+        issue_type TEXT,
+        case_type TEXT,
         description TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','UNDER_REVIEW','RESOLVED','DISMISSED')),
         resolution_note TEXT,
+        officer_note TEXT,
         resolved_by UUID REFERENCES users(id),
         resolved_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      -- Backward-compatible migration for databases created with the original
+      -- discrepancy schema (case_type/officer_note instead of issue_type/resolution_note).
+      ALTER TABLE discrepancy_cases ADD COLUMN IF NOT EXISTS institution_id UUID REFERENCES users(id);
+      ALTER TABLE discrepancy_cases ADD COLUMN IF NOT EXISTS issue_type TEXT;
+      ALTER TABLE discrepancy_cases ADD COLUMN IF NOT EXISTS resolution_note TEXT;
+      ALTER TABLE discrepancy_cases ADD COLUMN IF NOT EXISTS case_type TEXT;
+      ALTER TABLE discrepancy_cases ADD COLUMN IF NOT EXISTS officer_note TEXT;
+
+      UPDATE discrepancy_cases d
+      SET institution_id = f.institution_id
+      FROM fdr_records f
+      WHERE d.fdr_id = f.id AND d.institution_id IS NULL;
+
+      UPDATE discrepancy_cases
+      SET issue_type = COALESCE(issue_type, case_type, 'OTHER')
+      WHERE issue_type IS NULL;
+
+      UPDATE discrepancy_cases
+      SET resolution_note = COALESCE(resolution_note, officer_note)
+      WHERE resolution_note IS NULL AND officer_note IS NOT NULL;
+
+      UPDATE discrepancy_cases
+      SET case_type = COALESCE(case_type,
+        CASE
+          WHEN UPPER(COALESCE(issue_type, 'OTHER')) IN ('DUPLICATE','MISSING_DOCUMENT','DATA_MISMATCH','DATE_INVALID','OTHER')
+            THEN UPPER(issue_type)
+          ELSE 'OTHER'
+        END
+      )
+      WHERE case_type IS NULL;
+
       CREATE INDEX IF NOT EXISTS lifecycle_fdr_idx ON lifecycle_requests(fdr_id);
       CREATE INDEX IF NOT EXISTS lifecycle_status_idx ON lifecycle_requests(status);
       CREATE INDEX IF NOT EXISTS discrepancy_fdr_idx ON discrepancy_cases(fdr_id);
       CREATE INDEX IF NOT EXISTS discrepancy_status_idx ON discrepancy_cases(status);
+      CREATE INDEX IF NOT EXISTS discrepancy_institution_idx ON discrepancy_cases(institution_id);
     `);
   }
 
@@ -53,6 +88,16 @@ function sihRouter(pool) {
     return (req, res, next) => roles.includes(req.sihUser.role)
       ? next()
       : res.status(403).json({ error: 'Insufficient permissions' });
+  }
+
+  function normalizeIssueType(value) {
+    const raw = String(value || '').trim().toUpperCase();
+    if (['DUPLICATE','MISSING_DOCUMENT','DATA_MISMATCH','DATE_INVALID','OTHER'].includes(raw)) return raw;
+    if (raw.includes('DUPLICATE')) return 'DUPLICATE';
+    if (raw.includes('MISSING') || raw.includes('DOCUMENT')) return 'MISSING_DOCUMENT';
+    if (raw.includes('DATE') || raw.includes('EXPIR')) return 'DATE_INVALID';
+    if (raw.includes('MISMATCH') || raw.includes('AMOUNT') || raw.includes('BANK')) return 'DATA_MISMATCH';
+    return 'OTHER';
   }
 
   const router = require('express').Router();
@@ -154,10 +199,11 @@ function sihRouter(pool) {
       await ensureTables();
       const fdr = await pool.query('SELECT institution_id FROM fdr_records WHERE id=$1', [fdrId]);
       if (!fdr.rows[0]) return res.status(404).json({ error: 'FDR not found' });
-      const result = await pool.query(`INSERT INTO discrepancy_cases(fdr_id,institution_id,issue_type,description)
-        VALUES($1,$2,$3,$4) RETURNING *`, [fdrId, fdr.rows[0].institution_id, String(issueType).slice(0,100), String(description).trim().slice(0,2000)]);
+      const normalizedType = normalizeIssueType(issueType);
+      const result = await pool.query(`INSERT INTO discrepancy_cases(fdr_id,institution_id,issue_type,case_type,description)
+        VALUES($1,$2,$3,$4,$5) RETURNING *`, [fdrId, fdr.rows[0].institution_id, normalizedType, normalizedType, String(description).trim().slice(0,2000)]);
       await pool.query(`INSERT INTO audit_logs(user_id,action,entity_type,entity_id,details) VALUES($1,'DISCREPANCY_CREATED','FDR',$2,$3)`,
-        [req.sihUser.sub, fdrId, JSON.stringify({ issueType })]);
+        [req.sihUser.sub, fdrId, JSON.stringify({ issueType: normalizedType })]);
       res.status(201).json({ discrepancy: result.rows[0] });
     } catch (error) {
       console.error('Discrepancy create error:', error);
@@ -170,7 +216,7 @@ function sihRouter(pool) {
     if (!['UNDER_REVIEW','RESOLVED','DISMISSED'].includes(status)) return res.status(400).json({ error: 'Invalid discrepancy status' });
     try {
       await ensureTables();
-      const result = await pool.query(`UPDATE discrepancy_cases SET status=$1,resolution_note=$2,resolved_by=$3,resolved_at=NOW()
+      const result = await pool.query(`UPDATE discrepancy_cases SET status=$1,resolution_note=$2,officer_note=$2,resolved_by=$3,resolved_at=NOW()
         WHERE id=$4 RETURNING *`, [status, String(resolutionNote || '').trim() || null, req.sihUser.sub, req.params.id]);
       if (!result.rows[0]) return res.status(404).json({ error: 'Discrepancy case not found' });
       await pool.query(`INSERT INTO audit_logs(user_id,action,entity_type,entity_id,details) VALUES($1,'DISCREPANCY_STATUS','FDR',$2,$3)`,
