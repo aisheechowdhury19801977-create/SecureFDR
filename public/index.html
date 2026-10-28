@@ -12,89 +12,27 @@
     <div class="brand"><span class="brand-mark">S</span><div><strong>SecureFDR</strong><small>AICTE Security Deposit & FDR Portal</small></div></div>
     <div id="userBadge" class="user-badge">Not signed in</div>
   </header>
-
   <main class="container">
     <section id="authView" class="auth-grid">
-      <div class="hero-card">
-        <p class="eyebrow">Secure financial instrument management</p>
-        <h1>Secure the complete FDR lifecycle.</h1>
-        <p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p>
-        <div class="feature-row"><span>🔐 Secure login</span><span>📄 FDR workflow</span><span>📊 Live dashboard</span><span>🛡️ Officer verification</span></div>
-      </div>
+      <div class="hero-card"><p class="eyebrow">Secure financial instrument management</p><h1>Secure the complete FDR lifecycle.</h1><p>Submit, verify, monitor and audit security deposits and fixed deposits through one role-based portal.</p><div class="feature-row"><span>🔐 Secure login</span><span>📄 FDR workflow</span><span>📊 Live dashboard</span><span>🛡️ Officer verification</span></div></div>
       <div class="card auth-card">
         <div class="tabs"><button class="tab active" data-tab="login">Login</button><button class="tab" data-tab="register">Register</button></div>
-        <form id="loginForm" class="form">
-          <label>Email<input id="loginEmail" type="email" required placeholder="institution@example.com"></label>
-          <label>Password<input id="loginPassword" type="password" required placeholder="••••••••"></label>
-          <button class="primary" type="submit">Sign in</button>
-        </form>
-        <form id="registerForm" class="form hidden">
-          <label>Name<input id="registerName" required placeholder="Institution name"></label>
-          <label>Email<input id="registerEmail" type="email" required placeholder="institution@example.com"></label>
-          <label>Password<input id="registerPassword" type="password" minlength="8" required placeholder="Minimum 8 characters"></label>
-          <p class="message">New registrations are created as Institution accounts. Officer/Admin accounts are provisioned separately.</p>
-          <button class="primary" type="submit">Create institution account</button>
-        </form>
+        <form id="loginForm" class="form"><label>Email<input id="loginEmail" type="email" required placeholder="institution@example.com"></label><label>Password<input id="loginPassword" type="password" required placeholder="••••••••"></label><button class="primary" type="submit">Sign in</button></form>
+        <form id="registerForm" class="form hidden"><label>Name<input id="registerName" required placeholder="Institution name"></label><label>Email<input id="registerEmail" type="email" required placeholder="institution@example.com"></label><label>Password<input id="registerPassword" type="password" minlength="8" required placeholder="Minimum 8 characters"></label><p class="message">New registrations are created as Institution accounts. Officer/Admin accounts are provisioned separately.</p><button class="primary" type="submit">Create institution account</button></form>
         <p id="authMessage" class="message"></p>
       </div>
     </section>
-
     <section id="appView" class="hidden">
       <div class="page-head"><div><p class="eyebrow">SecureFDR workspace</p><h2 id="welcome">Dashboard</h2></div><button id="logoutBtn" class="ghost">Log out</button></div>
       <div id="stats" class="stats"></div>
-
-      <div id="institutionPanel" class="card panel hidden">
-        <div class="panel-head"><div><h3>Submit a security deposit / FDR</h3><p>Create a record for officer verification.</p></div></div>
-        <form id="fdrForm" class="form form-grid">
-          <label>FDR number<input id="fdrNumber" required placeholder="FDR-2026-0001"></label>
-          <label>Bank name<input id="bankName" required placeholder="Bank / financial institution"></label>
-          <label>Amount (₹)<input id="amount" type="number" min="1" step="0.01" required placeholder="100000"></label>
-          <label>Issue date<input id="issueDate" type="date" required></label>
-          <label>Expiry date<input id="expiryDate" type="date" required></label>
-          <label>Document name<input id="documentName" placeholder="FDR_certificate.pdf"></label>
-          <label class="upload-field">Upload FDR certificate<input id="documentFile" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"><small>PDF, JPG or PNG • maximum 600 KB</small></label>
-          <div class="form-actions"><button class="primary" type="submit">Submit FDR</button><span id="fdrMessage" class="message"></span></div>
-        </form>
-      </div>
-
-      <div id="officerPanel" class="card panel hidden">
-        <div class="panel-head"><div><h3>Officer verification queue</h3><p>Review submitted FDRs and record a decision.</p></div><button id="refreshOfficerBtn" class="ghost">Refresh queue</button></div>
-        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Decision</th></tr></thead><tbody id="officerRows"></tbody></table></div>
-      </div>
-
-      <div id="auditPanel" class="card panel hidden">
-        <div class="panel-head"><div><h3>Audit trail</h3><p>Recent authentication and FDR lifecycle actions.</p></div><button id="refreshAuditBtn" class="ghost">Refresh audit</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Role</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="auditRows"></tbody></table></div>
-      </div>
-
-      <div id="recordsPanel" class="card panel">
-        <div class="panel-head"><div><h3>FDR records</h3><p>Status updates and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div>
-        <div class="table-wrap"><table><thead><tr><th>FDR</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Verification</th></tr></thead><tbody id="fdrRows"></tbody></table></div>
-      </div>
+      <div id="institutionPanel" class="card panel hidden"><div class="panel-head"><div><h3>Submit a security deposit / FDR</h3><p>Create a record for officer verification.</p></div></div><form id="fdrForm" class="form form-grid"><label>FDR number<input id="fdrNumber" required placeholder="FDR-2026-0001"></label><label>Bank name<input id="bankName" required placeholder="Bank / financial institution"></label><label>Amount (₹)<input id="amount" type="number" min="1" step="0.01" required placeholder="100000"></label><label>Issue date<input id="issueDate" type="date" required></label><label>Expiry date<input id="expiryDate" type="date" required></label><label>Document name<input id="documentName" placeholder="FDR_certificate.pdf"></label><label class="upload-field">Upload FDR certificate<input id="documentFile" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"><small>PDF, JPG or PNG • maximum 600 KB</small></label><div class="form-actions"><button class="primary" type="submit">Submit FDR</button><span id="fdrMessage" class="message"></span></div></form></div>
+      <div id="officerPanel" class="card panel hidden"><div class="panel-head"><div><h3>Officer verification queue</h3><p>Review submitted FDRs and record a decision.</p></div><button id="refreshOfficerBtn" class="ghost">Refresh queue</button></div><div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Decision</th></tr></thead><tbody id="officerRows"></tbody></table></div></div>
+      <div id="auditPanel" class="card panel hidden"><div class="panel-head"><div><h3>Audit trail</h3><p>Recent authentication and FDR lifecycle actions.</p></div><button id="refreshAuditBtn" class="ghost">Refresh audit</button></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Role</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="auditRows"></tbody></table></div></div>
+      <div id="recordsPanel" class="card panel"><div class="panel-head"><div><h3>FDR records</h3><p>Status updates and lifecycle visibility.</p></div><button id="refreshBtn" class="ghost">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>FDR</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Verification</th></tr></thead><tbody id="fdrRows"></tbody></table></div></div>
     </section>
   </main>
-
-  <div id="reviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
-    <div class="modal-card wide-modal">
-      <div class="modal-head"><div><p class="eyebrow">Officer verification</p><h3 id="reviewTitle">Review FDR</h3></div><button id="reviewCloseBtn" class="icon-btn" aria-label="Close">×</button></div>
-      <div class="review-banner"><span>FDR number</span><strong id="reviewFdrNumber">—</strong><span id="reviewStatus"></span></div>
-      <div class="detail-grid">
-        <div><span>Institution</span><strong id="reviewInstitution">—</strong></div><div><span>Institution email</span><strong id="reviewEmail">—</strong></div><div><span>Bank</span><strong id="reviewBank">—</strong></div><div><span>Amount</span><strong id="reviewAmount">—</strong></div><div><span>Issue date</span><strong id="reviewIssueDate">—</strong></div><div><span>Expiry date</span><strong id="reviewExpiryDate">—</strong></div><div><span>Submitted</span><strong id="reviewCreated">—</strong></div><div><span>Verified by</span><strong id="reviewVerifiedBy">—</strong></div><div><span>Verified at</span><strong id="reviewVerifiedAt">—</strong></div>
-      </div>
-      <div class="verification-note-box"><span>Verification note</span><p id="reviewVerificationNote">No verification note recorded.</p></div>
-      <div class="document-box"><span>Supporting document</span><div id="reviewDocument"></div></div>
-      <div class="modal-actions"><button id="reviewMarkBtn" class="ghost">Mark under review</button><div class="spacer"></div><button id="reviewRejectBtn" class="action-btn danger">Reject</button><button id="reviewVerifyBtn" class="primary">Verify FDR</button></div>
-    </div>
-  </div>
-
-  <div id="decisionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="decisionTitle">
-    <div class="modal-card decision-modal">
-      <div class="modal-head"><div><p class="eyebrow">Verification decision</p><h3 id="decisionTitle">Verify FDR</h3></div><button id="decisionCloseBtn" class="icon-btn" aria-label="Close">×</button></div>
-      <p id="decisionSubtitle" class="modal-copy"></p><div class="decision-record"><span>FDR</span><strong id="decisionFdr">—</strong></div>
-      <form id="decisionForm" class="form"><label>Officer note<textarea id="decisionNote" rows="4" maxlength="1000" placeholder="Optional verification note"></textarea></label><p id="decisionMessage" class="message"></p><div class="modal-actions"><button id="decisionCancelBtn" type="button" class="ghost">Cancel</button><div class="spacer"></div><button id="decisionConfirm" class="primary" type="submit">Confirm verification</button></div></form>
-    </div>
-  </div>
-
+  <div id="reviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reviewTitle"><div class="modal-card wide-modal"><div class="modal-head"><div><p class="eyebrow">Officer verification</p><h3 id="reviewTitle">Review FDR</h3></div><button id="reviewCloseBtn" class="icon-btn" aria-label="Close">×</button></div><div class="review-banner"><span>FDR number</span><strong id="reviewFdrNumber">—</strong><span id="reviewStatus"></span></div><div class="detail-grid"><div><span>Institution</span><strong id="reviewInstitution">—</strong></div><div><span>Institution email</span><strong id="reviewEmail">—</strong></div><div><span>Bank</span><strong id="reviewBank">—</strong></div><div><span>Amount</span><strong id="reviewAmount">—</strong></div><div><span>Issue date</span><strong id="reviewIssueDate">—</strong></div><div><span>Expiry date</span><strong id="reviewExpiryDate">—</strong></div><div><span>Submitted</span><strong id="reviewCreated">—</strong></div><div><span>Verified by</span><strong id="reviewVerifiedBy">—</strong></div><div><span>Verified at</span><strong id="reviewVerifiedAt">—</strong></div></div><div class="verification-note-box"><span>Verification note</span><p id="reviewVerificationNote">No verification note recorded.</p></div><div class="document-box"><span>Supporting document</span><div id="reviewDocument"></div></div><div class="modal-actions"><button id="reviewMarkBtn" class="ghost">Mark under review</button><div class="spacer"></div><button id="reviewRejectBtn" class="action-btn danger">Reject</button><button id="reviewVerifyBtn" class="primary">Verify FDR</button></div></div></div>
+  <div id="decisionModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="decisionTitle"><div class="modal-card decision-modal"><div class="modal-head"><div><p class="eyebrow">Verification decision</p><h3 id="decisionTitle">Verify FDR</h3></div><button id="decisionCloseBtn" class="icon-btn" aria-label="Close">×</button></div><p id="decisionSubtitle" class="modal-copy"></p><div class="decision-record"><span>FDR</span><strong id="decisionFdr">—</strong></div><form id="decisionForm" class="form"><label>Officer note<textarea id="decisionNote" rows="4" maxlength="1000" placeholder="Optional verification note"></textarea></label><p id="decisionMessage" class="message"></p><div class="modal-actions"><button id="decisionCancelBtn" type="button" class="ghost">Cancel</button><div class="spacer"></div><button id="decisionConfirm" class="primary" type="submit">Confirm verification</button></div></form></div></div>
   <script src="/upload-helper.js"></script>
   <script src="/app.js"></script>
   <script src="/document-actions.js"></script>
@@ -104,5 +42,6 @@
   <script src="/renewal-workflow.js"></script>
   <script src="/lifecycle-workflows.js"></script>
   <script src="/discrepancy-review.js"></script>
+  <script src="/workflow-center.js"></script>
 </body>
 </html>
