@@ -1,0 +1,35 @@
+/* Officer-first responsive presentation */
+@media (max-width: 800px) {
+  .topbar { height: auto; min-height: 64px; padding: 10px 4%; gap: 10px; }
+  .brand small { font-size: 10px; }
+  .user-badge { max-width: 42vw; text-align: right; font-size: 11px; }
+  .container { width: 94%; margin: 20px auto; }
+  .page-head { gap: 12px; align-items: flex-start; }
+  .page-head h2 { font-size: 23px; }
+  .page-head .ghost { flex-shrink: 0; }
+  .panel { padding: 17px; border-radius: 14px; }
+  .panel-head { gap: 12px; align-items: flex-start; }
+  .panel-head h3 { font-size: 16px; }
+  .panel-head p { line-height: 1.45; }
+  .table-wrap { margin: 0 -5px; padding: 0 5px; }
+  table { min-width: 720px; }
+  th, td { padding: 12px 9px; }
+  .decision-actions { gap: 2px; }
+  .action-btn { padding: 7px 5px; }
+  .modal { padding: 8px; }
+  .wide-modal { max-height: 94vh; overflow-y: auto; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions .spacer { display: none; }
+  .modal-actions .primary, .modal-actions .action-btn, .modal-actions .ghost { flex: 1 1 140px; text-align: center; }
+}
+@media (max-width: 520px) {
+  .brand-mark { width: 34px; height: 34px; }
+  .brand strong { font-size: 15px; }
+  .page-head { flex-direction: column; }
+  .page-head .ghost { width: 100%; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .stat { padding: 14px; }
+  .stat strong { font-size: 22px; }
+  .form-actions { flex-direction: column; align-items: stretch; }
+  .form-actions .primary { width: 100%; }
+}
