@@ -1,13 +1,10 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const token = () => localStorage.getItem('securefdr_token');
-  const RELEASE_KEY = 'securefdr_release_requests_v1';
   let selected = null;
   let mode = null;
 
   const esc = (v) => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-  const releases = () => { try { return JSON.parse(localStorage.getItem(RELEASE_KEY) || '{}'); } catch { return {}; } };
-  const saveReleases = (v) => localStorage.setItem(RELEASE_KEY, JSON.stringify(v));
 
   function styles() {
     if ($('lifecycleWorkflowStyles')) return;
@@ -35,15 +32,12 @@
     $('lifecycleWorkflowModal').addEventListener('click', e => { if (e.target === $('lifecycleWorkflowModal')) close(); });
   }
 
-  function setForm(html) {
-    $('lwForm').innerHTML = html;
-    $('lwForm').onsubmit = submit;
-  }
+  function setForm(html) { $('lwForm').innerHTML = html; $('lwForm').onsubmit = submit; }
 
   function openReplacement(fdr) {
     selected = fdr; mode = 'replacement'; ensureModal();
     $('lwTitle').textContent = 'Submit replacement FDR';
-    $('lwSubtitle').textContent = 'Replace an existing instrument while preserving the original record for audit history.';
+    $('lwSubtitle').textContent = 'Create the new instrument and link it to the previous FDR for complete lifecycle history.';
     $('lwSummary').innerHTML = `<strong>Replacing:</strong> ${esc(fdr.fdr_number)} • ${esc(fdr.bank_name)} • ₹${Number(fdr.amount).toLocaleString('en-IN')} • expires ${esc(String(fdr.expiry_date).slice(0,10))}`;
     setForm(`
       <label>New FDR number<input id="lwNumber" required placeholder="FDR-2027-0002"></label>
@@ -66,7 +60,7 @@
   function openRelease(fdr) {
     selected = fdr; mode = 'release'; ensureModal();
     $('lwTitle').textContent = 'Request release / refund';
-    $('lwSubtitle').textContent = 'Submit a release/refund request for competent-authority processing.';
+    $('lwSubtitle').textContent = 'Submit a controlled request for competent-authority processing and audit tracking.';
     $('lwSummary').innerHTML = `<strong>Request for:</strong> ${esc(fdr.fdr_number)} • ${esc(fdr.bank_name)} • ₹${Number(fdr.amount).toLocaleString('en-IN')}`;
     setForm(`
       <label>Request type<select id="lwType"><option value="RELEASE">Release of security deposit</option><option value="REFUND">Refund of security deposit</option></select></label>
@@ -77,14 +71,22 @@
       <div id="lwMessage" class="lw-message lw-full"></div>
       <div class="lw-actions lw-full"><button type="button" id="lwCancel" class="lw-btn">Cancel</button><button type="submit" id="lwSubmit" class="lw-btn danger">Submit request</button></div>
     `);
-    renderReleaseHistory();
+    loadReleaseHistory();
     $('lwCancel').onclick = close;
     $('lifecycleWorkflowModal').classList.remove('hidden');
   }
 
-  function renderReleaseHistory() {
-    const list = Object.values(releases()).filter(x => !selected || String(x.fdrId) === String(selected.id)).slice(-8).reverse();
-    $('lwHistory').innerHTML = list.length ? `<strong>Request history</strong><table><thead><tr><th>Type</th><th>Amount</th><th>Status</th><th>Submitted</th></tr></thead><tbody>${list.map(x => `<tr><td>${esc(x.type)}</td><td>₹${Number(x.amount).toLocaleString('en-IN')}</td><td>${esc(x.status)}</td><td>${esc(new Date(x.at).toLocaleString('en-IN'))}</td></tr>`).join('')}</tbody></table>` : '<div class="lw-help">No release/refund requests recorded for this FDR.</div>';
+  async function loadReleaseHistory() {
+    if (!selected) return;
+    try {
+      const response = await fetch('/api/lifecycle-requests', {headers:{Authorization:`Bearer ${token()}`}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load request history');
+      const list = (data.requests || []).filter(x => String(x.fdr_id) === String(selected.id)).slice(0,8);
+      $('lwHistory').innerHTML = list.length ? `<strong>Request history</strong><table><thead><tr><th>Type</th><th>Amount</th><th>Status</th><th>Submitted</th></tr></thead><tbody>${list.map(x => `<tr><td>${esc(x.request_type)}</td><td>₹${Number(x.requested_amount).toLocaleString('en-IN')}</td><td>${esc(x.status)}</td><td>${esc(new Date(x.created_at).toLocaleString('en-IN'))}</td></tr>`).join('')}</tbody></table>` : '<div class="lw-help">No release/refund requests recorded for this FDR.</div>';
+    } catch (e) {
+      $('lwHistory').innerHTML = `<div class="lw-help">Request history unavailable: ${esc(e.message)}</div>`;
+    }
   }
 
   function close() { selected = null; mode = null; if ($('lifecycleWorkflowModal')) $('lifecycleWorkflowModal').classList.add('hidden'); }
@@ -109,26 +111,32 @@
       const response = await fetch('/api/fdr', {method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({fdrNumber:newNumber,bankName:$('lwBank').value.trim(),amount:Number($('lwAmount').value),issueDate,expiryDate,documentName:$('lwDocName').value.trim()||file.name,documentUrl})});
       const data = await response.json().catch(()=>({}));
       if (!response.ok) throw new Error(data.error || 'Replacement submission failed');
-      message('Replacement submitted successfully. It is now in the officer verification queue.', true);
-      setTimeout(close, 900);
+      const linkResponse = await fetch(`/api/fdr/${selected.id}/lifecycle`, {method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({action:'REPLACEMENT',newFdrId:data.fdr.id,note:'Replacement instrument submitted through SecureFDR lifecycle workflow.'})});
+      const linkData = await linkResponse.json().catch(()=>({}));
+      if (!linkResponse.ok) throw new Error(linkData.error || 'Replacement was submitted but could not be linked to the previous FDR.');
+      message('Replacement submitted and linked to the original FDR.', true);
+      setTimeout(close, 1000);
       document.dispatchEvent(new CustomEvent('securefdr:replacement-submitted'));
     } catch(e) { message(e.message || 'Replacement submission failed.'); }
     finally { button.disabled = false; }
   }
 
-  function submitRelease() {
+  async function submitRelease() {
     const amount = Number($('lwAmount').value);
     const reason = $('lwReason').value.trim();
     if (!(amount > 0) || amount > Number(selected.amount)) return message('Enter a valid amount not greater than the FDR amount.');
     if (!reason) return message('Reason / justification is required.');
-    const all = releases();
-    const id = `${selected.id}-${Date.now()}`;
-    all[id] = {id,fdrId:selected.id,fdrNumber:selected.fdr_number,type:$('lwType').value,amount,reason,reference:$('lwReference').value.trim(),preferredDate:$('lwDate').value || null,status:'SUBMITTED',at:new Date().toISOString()};
-    saveReleases(all);
-    renderReleaseHistory();
-    message('Release/refund request submitted for competent-authority processing.', true);
-    setTimeout(close, 1100);
-    document.dispatchEvent(new CustomEvent('securefdr:release-requested'));
+    const button=$('lwSubmit'); button.disabled=true; message('Submitting request…',true);
+    try {
+      const response=await fetch(`/api/fdr/${selected.id}/release-request`,{method:'POST',headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:JSON.stringify({requestType:$('lwType').value,amount,reason,referenceNumber:$('lwReference').value.trim(),preferredDate:$('lwDate').value||null})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'Release/refund request failed');
+      message('Request submitted and recorded in the lifecycle audit trail.',true);
+      await loadReleaseHistory();
+      setTimeout(close,1100);
+      document.dispatchEvent(new CustomEvent('securefdr:release-requested'));
+    } catch(e){message(e.message||'Release/refund request failed.');}
+    finally{button.disabled=false;}
   }
 
   async function getFdr(id) {
