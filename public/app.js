@@ -25,13 +25,20 @@ async function api(path, options = {}) {
 function showApp() {
   $('authView').classList.add('hidden');
   $('appView').classList.remove('hidden');
-  $('userBadge').textContent = `${state.user.name} • ${state.user.role}`;
-  $('welcome').textContent = `${state.user.role === 'INSTITUTION' ? 'Welcome' : `${state.user.role} Dashboard`}, ${state.user.name}`;
   const institution = state.user.role === 'INSTITUTION';
   const officer = ['OFFICER', 'ADMIN'].includes(state.user.role);
+  document.body.classList.toggle('institution-mode', institution);
+  document.body.classList.toggle('officer-mode', officer);
+  $('userBadge').textContent = `${state.user.name} • ${state.user.role}`;
+  $('welcome').textContent = institution ? `Institution Dashboard • ${state.user.name}` : `${state.user.role} Dashboard • ${state.user.name}`;
+  $('workspaceEyebrow').textContent = institution ? 'Institution workspace • My records only' : 'AICTE compliance workspace • Authorized officer view';
+  $('recordsTitle').textContent = institution ? 'My FDR records' : 'FDR records across authorized institutions';
+  $('recordsSubtitle').textContent = institution ? 'Only FDRs submitted by your institution are visible here.' : 'Status, verification and lifecycle visibility across authorized institutions.';
   $('institutionPanel').classList.toggle('hidden', !institution);
   $('officerPanel').classList.toggle('hidden', !officer);
   $('auditPanel').classList.toggle('hidden', !officer);
+  $('institutionActionCenter').classList.toggle('hidden', !institution);
+  $('officerActionCenter').classList.toggle('hidden', !officer);
   loadFdrs();
   if (officer) { loadOfficerQueue(); loadAudit(); }
 }
@@ -39,6 +46,7 @@ function showApp() {
 function showAuth() {
   $('authView').classList.remove('hidden');
   $('appView').classList.add('hidden');
+  document.body.classList.remove('institution-mode', 'officer-mode');
   $('userBadge').textContent = 'Not signed in';
 }
 
@@ -110,9 +118,11 @@ async function loadFdrs() {
         <td>${verificationSummary(fdr)}</td>`;
       rows.appendChild(tr);
     }
-    $('stats').innerHTML = [
-      ['Total FDRs', counts.total], ['Verified', counts.verified], ['Pending review', counts.review], ['Expired', counts.expired]
-    ].map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
+    const institution = state.user?.role === 'INSTITUTION';
+    const stats = institution
+      ? [['My FDRs', counts.total], ['Verified', counts.verified], ['Awaiting verification', counts.review], ['Expired', counts.expired]]
+      : [['Total FDRs', counts.total], ['Verified', counts.verified], ['Pending review', counts.review], ['Expired', counts.expired]];
+    $('stats').innerHTML = stats.map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
   } catch (error) {
     $('fdrRows').innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
   }
@@ -177,6 +187,7 @@ function openReviewModal(fdr) {
   }
   $('reviewModal').classList.remove('hidden');
 }
+window.openReviewModal = openReviewModal;
 
 function closeReviewModal() { $('reviewModal').classList.add('hidden'); state.selectedFdr = null; }
 
