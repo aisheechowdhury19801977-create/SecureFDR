@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/ui-polish.css">
   <link rel="stylesheet" href="/document-actions.css">
   <link rel="stylesheet" href="/sih-readiness.css">
+  <link rel="stylesheet" href="/officer-mobile.css">
 </head>
 <body>
   <header class="topbar">
@@ -27,6 +28,7 @@
     <section id="appView" class="hidden">
       <div class="page-head"><div><p class="eyebrow">SecureFDR workspace</p><h2 id="welcome">Dashboard</h2></div><button id="logoutBtn" class="ghost">Log out</button></div>
       <div id="stats" class="stats"></div>
+      <section id="officerActionCenter" class="card panel hidden"></section>
       <div id="institutionPanel" class="card panel hidden"><div class="panel-head"><div><h3>Submit a security deposit / FDR</h3><p>Create a record for officer verification.</p></div></div><form id="fdrForm" class="form form-grid"><label>FDR number<input id="fdrNumber" required placeholder="FDR-2026-0001"></label><label>Bank name<input id="bankName" required placeholder="Bank / financial institution"></label><label>Amount (₹)<input id="amount" type="number" min="1" step="0.01" required placeholder="100000"></label><label>Issue date<input id="issueDate" type="date" required></label><label>Expiry date<input id="expiryDate" type="date" required></label><label>Document name<input id="documentName" placeholder="FDR_certificate.pdf"></label><label class="upload-field">Upload FDR certificate<input id="documentFile" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"><small>PDF, JPG or PNG • maximum 600 KB</small></label><div class="form-actions"><button class="primary" type="submit">Submit FDR</button><span id="fdrMessage" class="message"></span></div></form></div>
       <div id="officerPanel" class="card panel hidden"><div class="panel-head"><div><h3>Officer verification queue</h3><p>Review submitted FDRs and record a decision.</p></div><button id="refreshOfficerBtn" class="ghost">Refresh queue</button></div><div class="table-wrap"><table><thead><tr><th>FDR</th><th>Institution</th><th>Bank</th><th>Amount</th><th>Expiry</th><th>Status</th><th>Decision</th></tr></thead><tbody id="officerRows"></tbody></table></div></div>
       <div id="auditPanel" class="card panel hidden"><div class="panel-head"><div><h3>Audit trail</h3><p>Recent authentication and FDR lifecycle actions.</p></div><button id="refreshAuditBtn" class="ghost">Refresh audit</button></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Role</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="auditRows"></tbody></table></div></div>
@@ -47,5 +49,6 @@
   <script src="/workflow-center.js"></script>
   <script src="/bank-verification.js"></script>
   <script src="/sih-readiness.js"></script>
+  <script src="/officer-action-center.js"></script>
 </body>
 </html>
